@@ -1,0 +1,38 @@
+# Python / uv
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+dist/
+
+# Local settings and secrets
+.env
+.env.*
+.claude/settings.local.json
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Regenerable caches (simulator set-up and weekly v3 predictions rebuild on first use)
+data/live/*
+!data/live/wf_rows.parquet
+
+# Recorded ESPN feeds (large; tests/fixtures/ holds the small ones tests use)
+recordings/
+
+# Worker output (nflsim worker --out site)
+site/

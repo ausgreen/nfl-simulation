@@ -1,0 +1,40 @@
+stadium_id,name,games,lat,lon,field_bearing,field_len_m,field_wid_m,bowl_bearing,source
+ATL97,Mercedes-Benz Stadium,18,33.7554123,-84.4008493,,,,68.5,geocoded; no field polygon at the bowl center
+BAL00,M&T Bank Stadium,129,39.2779734,-76.6226651,,,,177.8,geocoded; no field polygon at the bowl center
+BOS00,Gillette Stadium,136,42.0908879,-71.2641731,162.2,120.0,72.0,,OSM pitch polygon 18 m from bowl center
+BUF00,Highmark Stadium,127,42.7730293,-78.7921925,,,,169.5,geocoded; no field polygon at the bowl center
+CAR00,Bank of America Stadium,127,35.225774,-80.8528276,140.0,105.0,69.0,140.0,OSM pitch polygon 16 m from bowl center
+CHI98,Soldier Field,125,41.8624515,-87.6167151,175.8,109.0,49.0,175.8,OSM pitch polygon 8 m from bowl center
+CIN00,Paycor Stadium,125,39.0954645,-84.5160488,141.2,127.0,85.0,161.0,OSM pitch polygon 10 m from bowl center
+CLE00,Huntington Bank Field,122,41.5060559,-81.6997118,56.0,113.0,52.0,55.8,OSM pitch polygon 9 m from bowl center
+DAL00,AT&T Stadium,4,32.7478503,-97.0928337,,,,90.8,geocoded; no field polygon at the bowl center
+DEN00,Empower Field at Mile High,131,39.743952,-105.0192228,0.2,110.0,49.0,,OSM pitch polygon 81 m from bowl center
+FRA00,Deutsche Bank Park,2,50.0686103,8.6454154,127.0,105.0,66.0,128.2,OSM pitch polygon 17 m from bowl center
+GER00,Allianz Arena,2,48.2187901,11.6236227,164.8,105.0,68.0,164.0,OSM pitch polygon 11 m from bowl center
+GNB00,Lambeau Field,130,44.5009705,-88.0619681,179.8,113.0,52.0,118.0,OSM pitch polygon 48 m from bowl center
+HOU00,NRG Stadium,5,29.6848581,-95.4108015,,,,179.2,geocoded; no field polygon at the bowl center
+IND00,Lucas Oil Stadium,25,39.7590621,-86.1638376,,,,25.5,geocoded; no field polygon at the bowl center
+JAX00,Tottenham Hotspur Stadium,115,30.3239811,-81.6373046,15.8,124.0,83.0,105.5,OSM pitch polygon 27 m from bowl center
+KAN00,GEHA Field at Arrowhead Stadium,137,39.0489358,-94.4839993,136.8,113.0,53.0,137.0,OSM pitch polygon 19 m from bowl center
+LAX97,StubHub Center,22,33.8623767,-118.2629113,179.8,120.0,89.0,174.0,OSM pitch polygon 23 m from bowl center
+LAX99,Los Angeles Memorial Coliseum,31,34.0139159,-118.2877996,179.8,103.0,70.0,88.5,OSM pitch polygon 14 m from bowl center
+LON00,Wembley Stadium,22,51.5560695,-0.2796034,89.8,115.0,69.0,,OSM pitch polygon 10 m from bowl center
+LON01,Twickenham Stadium,3,51.4560051,-0.3415047,145.2,119.0,70.0,145.0,OSM pitch polygon 35 m from bowl center
+LON02,Tottenham Hotspur Stadium,11,51.604157,-0.0662604,176.2,105.0,68.0,179.5,OSM pitch polygon 12 m from bowl center
+MEX00,Estadio Banorte,5,19.3029794,-99.15047,6.2,108.0,71.0,6.2,OSM pitch polygon 14 m from bowl center
+MIA00,Hard Rock Stadium,122,25.9579032,-80.2388497,121.5,113.0,52.0,121.8,OSM pitch polygon 57 m from bowl center
+MIN98,TCF Bank Stadium,17,44.9765397,-93.2240767,90.2,113.0,52.0,77.5,OSM pitch polygon 23 m from bowl center
+NAS00,Nissan Stadium,124,36.1665236,-86.7713148,155.5,114.0,52.0,155.5,OSM pitch polygon 15 m from bowl center
+NYC01,MetLife Stadium,247,40.8135071,-74.0743442,166.5,110.0,48.0,167.8,OSM pitch polygon 9 m from bowl center
+OAK00,Ring Central Coliseum,59,37.7516333,-122.2004749,,,,48.0,geocoded; no field polygon at the bowl center
+PHI00,Lincoln Financial Field,132,39.9009099,-75.1674892,171.5,129.0,86.0,170.8,OSM pitch polygon 23 m from bowl center
+PHO00,State Farm Stadium,10,33.5270393,-112.2617088,,,,,geocoded; no field polygon at the bowl center
+PIT00,Acrisure Stadium,128,40.4467166,-80.0157199,154.8,123.0,86.0,167.5,OSM pitch polygon 6 m from bowl center
+RIO00,Maracana Stadium,1,-22.9121619,-43.2311861,31.0,105.0,68.0,,OSM pitch polygon 91 m from bowl center
+SAO00,Arena Corinthians,1,-23.5453071,-46.474338,0.5,105.0,68.0,90.5,OSM pitch polygon 27 m from bowl center
+SDG00,Qualcomm Stadium,40,32.7819433,-117.0844477,,,,,geocoded; no field polygon at the bowl center
+SEA00,Lumen Field,131,47.5953459,-122.3316443,0.0,113.0,53.0,,OSM pitch polygon 11 m from bowl center
+SFO00,Candlestick Park,17,37.7171914,-122.3804216,,,,,geocoded; no field polygon at the bowl center
+SFO01,Levi's Stadium,111,37.4029867,-121.9696489,151.8,113.0,53.0,148.5,OSM pitch polygon 23 m from bowl center
+TAM00,Raymond James Stadium,127,27.9759793,-82.5033545,179.8,121.0,84.0,179.8,OSM pitch polygon 2 m from bowl center
+WAS00,Northwest Stadium,125,38.9076694,-76.864533,119.0,109.0,48.0,112.5,OSM pitch polygon 28 m from bowl center

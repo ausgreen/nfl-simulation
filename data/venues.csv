@@ -1,0 +1,52 @@
+venue_id,name,roof_type,lat,lon,source
+ATL00,Georgia Dome,dome,,,
+ATL97,Mercedes-Benz Stadium,retractable,33.7554123,-84.4008493,OSM Nominatim (glare experiment)
+BAL00,M&T Bank Stadium,outdoor,39.2779734,-76.6226651,OSM Nominatim (glare experiment)
+BOS00,Gillette Stadium,outdoor,42.0908879,-71.2641731,OSM Nominatim (glare experiment)
+BUF00,Highmark Stadium,outdoor,42.7730293,-78.7921925,OSM Nominatim (glare experiment)
+BUF01,Rogers Centre,dome,,,
+CAR00,Bank of America Stadium,outdoor,35.225774,-80.8528276,OSM Nominatim (glare experiment)
+CHI98,Soldier Field,outdoor,41.8624515,-87.6167151,OSM Nominatim (glare experiment)
+CIN00,Paycor Stadium,outdoor,39.0954645,-84.5160488,OSM Nominatim (glare experiment)
+CLE00,Huntington Bank Field,outdoor,41.5060559,-81.6997118,OSM Nominatim (glare experiment)
+DAL00,AT&T Stadium,retractable,32.7478503,-97.0928337,OSM Nominatim (glare experiment)
+DEN00,Empower Field at Mile High,outdoor,39.743952,-105.0192228,OSM Nominatim (glare experiment)
+DET00,Ford Field,dome,,,
+FRA00,Deutsche Bank Park,outdoor,50.0686103,8.6454154,OSM Nominatim (glare experiment)
+GER00,FC Bayern Munich Stadium,outdoor,48.2187901,11.6236227,OSM Nominatim (glare experiment)
+GNB00,Lambeau Field,outdoor,44.5009705,-88.0619681,OSM Nominatim (glare experiment)
+HOU00,Reliant Stadium,retractable,29.6848581,-95.4108015,OSM Nominatim (glare experiment)
+IND00,Lucas Oil Stadium,retractable,39.7590621,-86.1638376,OSM Nominatim (glare experiment)
+JAX00,EverBank Stadium,outdoor,30.3239811,-81.6373046,OSM Nominatim (glare experiment)
+KAN00,GEHA Field at Arrowhead Stadium,outdoor,39.0489358,-94.4839993,OSM Nominatim (glare experiment)
+LAX01,SoFi Stadium,dome,,,
+LAX97,StubHub Center,outdoor,33.8623767,-118.2629113,OSM Nominatim (glare experiment)
+LAX99,Los Angeles Memorial Coliseum,outdoor,34.0139159,-118.2877996,OSM Nominatim (glare experiment)
+LON00,Wembley Stadium,outdoor,51.5560695,-0.2796034,OSM Nominatim (glare experiment)
+LON01,Twickenham Stadium,outdoor,51.4560051,-0.3415047,OSM Nominatim (glare experiment)
+LON02,Tottenham Hotspur Stadium,outdoor,51.604157,-0.0662604,OSM Nominatim (glare experiment)
+MAD01,Bernabeu,retractable,40.4530437,-3.688197,OSM Nominatim
+MEL00,Melbourne Cricket Ground,outdoor,-37.819909,144.983225,OSM Nominatim
+MEX00,Estadio Banorte,outdoor,19.3029794,-99.15047,OSM Nominatim (glare experiment)
+MIA00,Hard Rock Stadium,outdoor,25.9579032,-80.2388497,OSM Nominatim (glare experiment)
+MIN00,Mall of America Field,dome,,,
+MIN01,U.S. Bank Stadium,dome,,,
+MIN98,TCF Bank Stadium,outdoor,44.9765397,-93.2240767,OSM Nominatim (glare experiment)
+NAS00,Nissan Stadium,outdoor,36.1665236,-86.7713148,OSM Nominatim (glare experiment)
+NOR00,Caesars Superdome,dome,,,
+NYC01,MetLife Stadium,outdoor,40.8135071,-74.0743442,OSM Nominatim (glare experiment)
+OAK00,Ring Central Coliseum,outdoor,37.7516333,-122.2004749,OSM Nominatim (glare experiment)
+PAR00,Stade de France,outdoor,48.9244726,2.3601325,OSM Nominatim
+PHI00,Lincoln Financial Field,outdoor,39.9009099,-75.1674892,OSM Nominatim (glare experiment)
+PHO00,State Farm Stadium,retractable,33.5270393,-112.2617088,OSM Nominatim (glare experiment)
+PIT00,Acrisure Stadium,outdoor,40.4467166,-80.0157199,OSM Nominatim (glare experiment)
+RIO00,Maracana Stadium,outdoor,-22.9121619,-43.2311861,OSM Nominatim (glare experiment)
+SAO00,Arena Corinthians,outdoor,-23.5453071,-46.474338,OSM Nominatim (glare experiment)
+SDG00,Qualcomm Stadium,outdoor,32.7819433,-117.0844477,OSM Nominatim (glare experiment)
+SEA00,Lumen Field,outdoor,47.5953459,-122.3316443,OSM Nominatim (glare experiment)
+SFO00,Candlestick Park,outdoor,37.7171914,-122.3804216,OSM Nominatim (glare experiment)
+SFO01,Levi's Stadium,outdoor,37.4029867,-121.9696489,OSM Nominatim (glare experiment)
+STL00,Edward Jones Dome,dome,,,
+TAM00,Raymond James Stadium,outdoor,27.9759793,-82.5033545,OSM Nominatim (glare experiment)
+VEG00,Allegiant Stadium,dome,,,
+WAS00,Northwest Stadium,outdoor,38.9076694,-76.864533,OSM Nominatim (glare experiment)

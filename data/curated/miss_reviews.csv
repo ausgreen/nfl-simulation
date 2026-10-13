@@ -1,0 +1,23 @@
+qb,player_id,line,season,week,review_state,context,source
+Jared Goff,00-0033106,175,2023,14,UNREVIEWED,No cause assigned; review game context.,https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2023.csv
+Jared Goff,00-0033106,175,2024,8,UNREVIEWED,No cause assigned; review game context.,https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2024.csv
+Jared Goff,00-0033106,175,2024,9,UNREVIEWED,No cause assigned; review game context.,https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2024.csv
+Jared Goff,00-0033106,175,2025,4,UNREVIEWED,No cause assigned; review game context.,https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2025.csv
+Matthew Stafford,00-0026498,150,2024,16,UNREVIEWED,No cause assigned; review game context.,https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2024.csv
+Matthew Stafford,00-0026498,150,2025,11,UNREVIEWED,No cause assigned; review game context.,https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2025.csv
+Patrick Mahomes,00-0033873,175,2024,2,UNREVIEWED,No cause assigned; review game context.,https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2024.csv
+Patrick Mahomes,00-0033873,175,2024,7,UNREVIEWED,No cause assigned; review game context.,https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2024.csv
+Patrick Mahomes,00-0033873,175,2024,15,UNREVIEWED,No cause assigned; review game context.,https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2024.csv
+Patrick Mahomes,00-0033873,175,2025,14,UNREVIEWED,No cause assigned; review game context.,https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2025.csv
+Trevor Lawrence,00-0036971,150,2024,13,INJURY VERIFIED,Left in second quarter with concussion; retain as a failure.,https://www.jaguars.com/news/k000060-game-report-2024-week-13-texans-23-jaguars-20
+Patrick Mahomes,00-0033873,200,2026,1,UNREVIEWED,Below locked W4 research threshold; no cause assigned.,https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2026.csv
+Matthew Stafford,00-0026498,200,2026,1,UNREVIEWED,Below locked W4 research threshold; no cause assigned.,https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2026.csv
+Trevor Lawrence,00-0036971,200,2026,2,UNREVIEWED,Below locked W4 research threshold; no cause assigned.,https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2026.csv
+Trevor Lawrence,00-0036971,200,2026,3,UNREVIEWED,Below locked W4 research threshold; no cause assigned.,https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2026.csv
+Lamar Jackson,00-0034796,200,2026,3,UNREVIEWED,Below locked W4 research threshold; no cause assigned.,https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2026.csv
+Jared Goff,00-0033106,225,2026,1,UNREVIEWED,Below locked W4 research threshold; no cause assigned.,https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2026.csv
+Dak Prescott,00-0033077,225,2026,1,UNREVIEWED,Below locked W4 research threshold; no cause assigned.,https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2026.csv
+Patrick Mahomes,00-0033873,250,2026,4,UNREVIEWED,Sunday Scan exploratory 250 line; no cause assigned.,https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2026.csv
+Justin Herbert,00-0036355,200,2026,4,UNREVIEWED,Sunday Scan exploratory 200 line; no cause assigned.,https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2026.csv
+Lamar Jackson,00-0034796,200,2026,4,INJURY VERIFIED,Left Week 4 with ankle injury; cleared study lines.,https://www.baltimoreravens.com/news/lamar-jackson-ankle-injury-update-jesse-minter-ravens-pass-rush-defensive-line-tyler-loop
+Marcus Mariota,00-0032268,150,2026,4,INJURY VERIFIED,MCL injury; relief QB followed.,https://www.commanders.com/news/final-thoughts-more-updates-on-washington-s-injured-players

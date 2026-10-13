@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live Game Companion</title>
+<style>
+:root {
+  --bg: #f4f5f2; --surface: #ffffff; --ink: #18211c; --ink-2: #4a554e; --ink-3: #7b857f;
+  --rule: #d9ddd8; --rule-2: #eceee9; --accent: #1d6b48; --accent-wash: #e3f0e8; --warn: #9a5b00; --warn-wash: #fff3dc;
+  --bar: #1d6b48; --bar-2: #c9d9cf;
+  --font: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1512; --surface: #161e1a; --ink: #e6ece8; --ink-2: #b2bcb6; --ink-3: #7f8a84;
+    --rule: #2a3530; --rule-2: #212b26; --accent: #4fb582; --accent-wash: #1c3327; --warn: #f5c34f; --warn-wash: #3a2f12;
+    --bar: #4fb582; --bar-2: #2c3d34;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1512; --surface: #161e1a; --ink: #e6ece8; --ink-2: #b2bcb6; --ink-3: #7f8a84;
+  --rule: #2a3530; --rule-2: #212b26; --accent: #4fb582; --accent-wash: #1c3327; --warn: #f5c34f; --warn-wash: #3a2f12;
+  --bar: #4fb582; --bar-2: #2c3d34;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font); }
+.app { max-width: 1100px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; }
+header.top { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+h1 { margin: 0; font-size: 20px; letter-spacing: .02em; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+select, input, button { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 8px; }
+button { cursor: pointer; }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.panel { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px; }
+.score { display: flex; flex-wrap: wrap; gap: 18px; align-items: baseline; }
+.score .teams { font-size: 26px; font-weight: 700; font-family: var(--mono); }
+.score .meta { color: var(--ink-2); }
+.now { font-size: 18px; font-weight: 600; margin-top: 6px; }
+.muted { color: var(--ink-3); }
+.badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--accent-wash); color: var(--accent); }
+.badge.warn { background: var(--warn-wash); color: var(--warn); }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 820px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+h2 { margin: 0 0 10px; font-size: 15px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--rule-2); vertical-align: middle; }
+th { font-size: 12px; color: var(--ink-3); font-weight: 600; }
+td.r, th.r { text-align: right; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.bar { position: relative; height: 8px; background: var(--bar-2); border-radius: 4px; min-width: 60px; }
+.bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--bar); border-radius: 4px; }
+.mix { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.qbs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 14px; }
+.qb h3 { margin: 0; font-size: 16px; }
+.qb .sub { color: var(--ink-2); margin: 2px 0 8px; }
+form.fix { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; align-items: end; }
+form.fix label { display: grid; gap: 3px; font-size: 12px; color: var(--ink-2); }
+form.fix input, form.fix select { width: 100%; }
+.err { color: var(--warn); }
+footer { color: var(--ink-3); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <h1>Live Game Companion</h1>
+    <div class="controls">
+      <select id="game" aria-label="Game"></select>
+      <label class="muted"><input type="checkbox" id="auto" checked> auto-refresh</label>
+      <select id="every" aria-label="Refresh interval"><option value="10">10 s</option><option value="20" selected>20 s</option><option value="45">45 s</option></select>
+      <button id="now" class="primary">Refresh</button>
+    </div>
+  </header>
+
+  <section class="panel" id="head" aria-live="polite"><span class="muted">Pick a game.</span></section>
+
+  <div class="grid2">
+    <section class="panel">
+      <h2>The next snap: most likely outcomes</h2>
+      <table><thead><tr><th class="r">Chance</th><th></th><th>Outcome</th><th>Most often leads to</th></tr></thead><tbody id="next"></tbody></table>
+      <div class="mix" id="mix"></div>
+      <p class="muted" style="margin:10px 0 0">Runs and completions are grouped by yards gained; everything else by what happened. “Most often leads to” is the most common situation after that outcome.</p>
+    </section>
+    <section class="panel">
+      <h2 id="drive-title">This drive: most likely outcomes</h2>
+      <table><thead><tr><th class="r">Chance</th><th></th><th>Outcome</th><th class="r">Plays</th><th class="r">Time</th></tr></thead><tbody id="drive"></tbody></table>
+      <div class="mix" id="drive-ep"></div>
+      <p class="muted" style="margin:10px 0 0">Simulated until the ball changes hands, a team scores, or the half ends. Plays and time are medians for that outcome.</p>
+    </section>
+  </div>
+
+  <section class="panel">
+      <h2>Correct the state</h2>
+      <form class="fix" id="fix">
+        <label>Ball <select name="pos"><option value="">feed</option><option value="home" id="opt-home">home</option><option value="away" id="opt-away">away</option></select></label>
+        <label>Down <select name="down"><option value="">feed</option><option>1</option><option>2</option><option>3</option><option>4</option></select></label>
+        <label>To go <input name="togo" type="number" min="1" max="99" placeholder="feed"></label>
+        <label>Spot <span style="display:flex;gap:4px"><select name="side"><option value="opp">opp</option><option value="own">own</option></select><input name="spot" type="number" min="1" max="99" placeholder="yd"></span></label>
+        <label>Quarter <select name="qtr"><option value="">feed</option><option>1</option><option>2</option><option>3</option><option>4</option></select></label>
+        <label>Clock <input name="mmss" placeholder="mm:ss"></label>
+        <label>Home score <input name="hs" type="number" min="0"></label>
+        <label>Away score <input name="as" type="number" min="0"></label>
+        <label>Home QB yds <input name="yds_home" type="number"></label>
+        <label>Away QB yds <input name="yds_away" type="number"></label>
+        <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" name="kick" style="width:auto"> kickoff next</label>
+        <span style="display:flex;gap:6px"><button type="submit" class="primary">Apply</button><button type="button" id="clear">Use feed</button></span>
+      </form>
+      <p class="muted" style="margin:8px 0 0">ESPN's feed runs behind TV. Fill only what is wrong; blanks keep the feed. Corrections stay until “Use feed”.</p>
+  </section>
+
+  <section class="qbs" id="qbs"></section>
+
+  <footer>
+    Game simulator (nflsim/sim/): play-by-play tables from the five seasons before this one, team offense and defense ratings,
+    each game tuned to v3's expected yards and the lines' implied points. Next-snap states: 20,000 one-play simulations; drive outcomes:
+    10,000 simulations of the current drive; QB outlook and win
+    chance: 4,000 simulations of the rest of the game. Known weaknesses: overconfident late in games (timeouts, onside kicks, penalties
+    are not modeled). Local only; nothing is published.
+  </footer>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const pct = (x, d = 0) => x == null ? "—" : (x * 100).toFixed(d) + "%";
+  const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+                  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} } };
+  let timer = null, last = null, busy = false;
+  const fixes = () => { try { return JSON.parse(store.get("live:fix:" + $("game").value) || "{}"); } catch { return {}; } };
+
+  async function loadGames() {
+    const r = await fetch("/api/games"); const g = await r.json();
+    const saved = store.get("live:game");
+    $("game").innerHTML = g.map((x) => `<option value="${x.event}">${esc(x.away)} @ ${esc(x.home)} · ${x.state === "in" ? esc(x.detail) + ` (${x.awayScore}–${x.homeScore})` : esc(x.detail)}</option>`).join("");
+    if (saved && g.some((x) => x.event === saved)) $("game").value = saved;
+  }
+
+  async function refresh() {
+    if (busy || !$("game").value) return;
+    busy = true;
+    const q = new URLSearchParams({ event: $("game").value, ...fixes() });
+    try {
+      const r = await fetch("/api/state?" + q); const d = await r.json();
+      if (!r.ok) throw new Error(d.error || r.statusText);
+      last = d; render(d);
+    } catch (e) {
+      $("head").insertAdjacentHTML("beforeend", `<div class="err">Update failed: ${esc(e.message)}</div>`);
+    } finally { busy = false; }
+  }
+
+  function render(d) {
+    $("opt-home").textContent = d.home; $("opt-away").textContent = d.away;
+    const age = d.feedTime ? Math.round((Date.now() - Date.parse(d.feedTime)) / 1000) : null;
+    const fixed = Object.keys(d.overrides || {}).length;
+    const spread = d.line.spread == null ? "" : `line ${d.home} ${d.line.spread > 0 ? "−" + d.line.spread : "+" + Math.abs(d.line.spread)} · total ${d.line.total}`;
+    $("head").innerHTML = `<div class="score"><span class="teams">${esc(d.away)} ${d.score.away} – ${esc(d.home)} ${d.score.home}</span>
+        <span class="meta">${esc(fixed && d.overrides.clock ? d.clock + " (corrected)" : d.detail)}</span><span class="meta">${esc(spread)}</span>
+        <span class="badge">${esc(d.home)} win ${pct(d.homeWin)}</span>
+        ${fixed ? `<span class="badge warn">manual correction (${fixed})</span>` : ""}</div>
+      <div class="now">${esc(d.now)}</div>
+      <div class="muted">Last play: ${esc(d.lastPlay || "—")}${age != null ? ` · feed ${age < 120 ? age + " s" : Math.round(age / 60) + " min"} old` : ""} · updated ${new Date(d.fetchedAt).toLocaleTimeString()}</div>`;
+    const max = Math.max(...d.next.map((x) => x.prob), 0.01);
+    $("next").innerHTML = d.next.map((x) => {
+        const extra = [x.first ? `1st down ${pct(x.first)}` : "", x.onDowns ? `turnover on downs ${pct(x.onDowns)}` : ""].filter(Boolean).join(" · ");
+        return `<tr><td class="r num">${pct(x.prob, 1)}</td>
+        <td style="width:24%"><div class="bar"><i style="width:${(x.prob / max * 100).toFixed(1)}%"></i></div></td>
+        <td>${esc(x.outcome)}${x.score ? ` <span class="badge">${esc(x.score)}</span>` : ""}</td>
+        <td class="muted">${esc(x.state)}${extra ? `<br><span class="num">${esc(extra)}</span>` : ""}</td></tr>`; }).join("") +
+      `<tr><td class="r num muted">${pct(Math.max(0, 1 - d.next.reduce((a, x) => a + x.prob, 0)), 1)}</td><td></td><td class="muted" colspan="2">every other outcome</td></tr>`;
+    const dv = d.drive || { team: "", kickoff: false, outcomes: [], expPts: null }, dmax = Math.max(...dv.outcomes.map((x) => x.prob), 0.01);
+    const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+    $("drive-title").textContent = !dv.team ? "This drive: most likely outcomes" : dv.kickoff ? `Next drive (${dv.team} receives): most likely outcomes` : `This drive (${dv.team} ball): most likely outcomes`;
+    $("drive").innerHTML = dv.outcomes.length ? dv.outcomes.map((x) => `<tr><td class="r num">${pct(x.prob, 1)}</td>
+        <td style="width:24%"><div class="bar"><i style="width:${(x.prob / dmax * 100).toFixed(1)}%"></i></div></td>
+        <td>${esc(cap(x.result))}${x.score ? ` <span class="badge">${esc(x.score)}</span>` : ""}</td>
+        <td class="r num muted">${Math.round(x.plays)}</td><td class="r num muted">${esc(x.time)}</td></tr>`).join("") +
+      `<tr><td class="r num muted">${pct(Math.max(0, 1 - dv.outcomes.reduce((a, x) => a + x.prob, 0)), 1)}</td><td></td><td class="muted" colspan="3">every other outcome</td></tr>`
+      : `<tr><td class="muted" colspan="5">No drive in progress.</td></tr>`;
+    $("drive-ep").innerHTML = dv.expPts == null ? "" : `<span class="muted">Expected net points for ${esc(dv.team)} on this drive:</span> <span class="badge">${dv.expPts >= 0 ? "+" : "−"}${Math.abs(dv.expPts).toFixed(2)}</span>`;
+    $("mix").innerHTML = `<span class="muted">Next play:</span>` + d.mix.map((m) => `<span class="badge">${esc(m.event)} ${pct(m.prob)}</span>`).join("");
+    $("qbs").innerHTML = d.qbs.map((q) => `<section class="panel qb">
+        <h3>${esc(q.qb || q.team)} <span class="muted">${esc(q.team)}</span> ${q.out ? `<span class="badge warn">may be out</span>` : ""}</h3>
+        <div class="sub"><b class="num">${Math.round(q.yds)}</b> yds now · final median <b class="num">${Math.round(q.median)}</b> (80% range ${Math.round(q.p10)}–${Math.round(q.p90)}) · pregame v3 ${Math.round(q.mu)}</div>
+        <table><thead><tr><th>Line</th><th class="r">Chance</th><th></th></tr></thead><tbody>
+        ${q.lines.map((l) => `<tr><td class="num">${l.line}+</td><td class="r num">${pct(l.p)}</td><td style="width:55%"><div class="bar"><i style="width:${(l.p * 100).toFixed(1)}%"></i></div></td></tr>`).join("")}
+        </tbody></table></section>`).join("");
+  }
+
+  function schedule() {
+    clearInterval(timer);
+    if ($("auto").checked) timer = setInterval(refresh, Number($("every").value) * 1000);
+  }
+
+  $("fix").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target), o = {};
+    for (const k of ["pos", "down", "togo", "yds_home", "yds_away"]) if (f.get(k)) o[k] = f.get(k);
+    if (f.get("spot")) o.yl = f.get("side") === "own" ? 100 - Number(f.get("spot")) : Number(f.get("spot"));
+    if (f.get("qtr") && f.get("mmss")) {
+      const [m, s] = f.get("mmss").split(":").map(Number);
+      o.clock = (4 - Number(f.get("qtr"))) * 900 + m * 60 + (s || 0);
+    }
+    if (f.get("hs") !== "" && f.get("as") !== "" && f.get("hs") != null) o.margin = Number(f.get("hs")) - Number(f.get("as"));
+    if (f.get("kick")) o.kick = "1";
+    store.set("live:fix:" + $("game").value, JSON.stringify(o));
+    refresh();
+  });
+  $("clear").addEventListener("click", () => { store.set("live:fix:" + $("game").value, null); $("fix").reset(); refresh(); });
+  $("game").addEventListener("change", () => { store.set("live:game", $("game").value); $("fix").reset(); refresh(); });
+  $("now").addEventListener("click", refresh);
+  $("auto").addEventListener("change", schedule);
+  $("every").addEventListener("change", schedule);
+
+  loadGames().then(() => { refresh(); schedule(); });
+})();
+</script>
+</body>
+</html>

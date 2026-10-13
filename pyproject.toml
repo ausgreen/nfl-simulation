@@ -1,0 +1,28 @@
+[project]
+name = "nfl-simulation"
+version = "0.1.0"
+description = "NFL play-by-play game simulator and live game companion (split out of floormodel)"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.4.6",
+    "pandas>=2.1",
+    "pyarrow>=25.0.1",
+    "scikit-learn>=1.9.1",
+]
+
+[project.scripts]
+nflsim = "nflsim.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["nflsim"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: runs the simulator (needs data/ and the season set-up cache)"]
