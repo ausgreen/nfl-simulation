@@ -109,7 +109,7 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     each game tuned to v3's expected yards and the lines' implied points. Next-snap states: 20,000 one-play simulations; drive outcomes:
     10,000 simulations of the current drive; QB outlook and win
     chance: 4,000 simulations of the rest of the game. Known weaknesses: overconfident late in games (timeouts, onside kicks, penalties
-    are not modeled). For information only.
+    are not modeled); overtime is not simulated. For information only.
   </footer>
 </div>
 
@@ -165,9 +165,13 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     const spread = d.line.spread == null ? "" : `line ${d.home} ${d.line.spread > 0 ? "−" + d.line.spread : "+" + Math.abs(d.line.spread)} · total ${d.line.total}`;
     $("head").innerHTML = `<div class="score"><span class="teams">${side(d.away, d.score.away)} – ${side(d.home, d.score.home)}</span>
         <span class="meta">${esc(d.detail)}</span><span class="meta">${esc(spread)}</span>
-        <span class="badge">${esc(d.home)} win ${pct(d.homeWin)}</span></div>
+        ${d.homeWin == null ? "" : `<span class="badge">${esc(d.home)} win ${pct(d.homeWin)}</span>`}</div>
       <div class="now">${d.ball ? `<span class="pill">${esc(d.ball.team)} ${d.ball.kick ? "receives" : "ball"}</span> ${esc(d.ball.kick ? "Kickoff next" : d.ball.situation)}` : esc(d.now)}</div>
       <div class="muted">Last play: ${esc(d.lastPlay || "—")}${age != null ? ` · last play ${ago(age)} ago` : ""}</div>`;
+    if (d.overtime) {  // the simulator ends with regulation: situation and yards only
+      const note = `<tr><td class="muted" colspan="5">${esc(d.note)}</td></tr>`;
+      $("next").innerHTML = note; $("drive").innerHTML = note; $("drive-title").textContent = "This drive"; $("mix").innerHTML = "";
+    } else {
     const max = Math.max(...d.next.map((x) => x.prob), 0.01);
     $("next").innerHTML = d.next.map((x) => {
         const extra = [x.first ? `1st down ${pct(x.first)}` : "", x.onDowns ? `turnover on downs ${pct(x.onDowns)}` : ""].filter(Boolean).join(" · ");
@@ -187,12 +191,13 @@ footer { color: var(--ink-3); font-size: 12.5px; }
       `<tr><td class="r num muted">${pct(Math.max(0, 1 - dv.outcomes.reduce((a, x) => a + x.prob, 0)), 1)}</td><td></td><td class="muted" colspan="3">every other outcome</td></tr>`
       : `<tr><td class="muted" colspan="5">No drive in progress.</td></tr>`;
     $("mix").innerHTML = `<span class="muted">Next play:</span>` + d.mix.map((m) => `<span class="badge">${esc(m.event)} ${pct(m.prob)}</span>`).join("");
+    }
     $("qbs").innerHTML = d.qbs.map((q) => `<section class="panel qb">
         <h3>${esc(q.qb || q.team)} <span class="muted">${esc(q.team)}</span> ${q.out ? `<span class="badge warn">may be out</span>` : ""}</h3>
-        <div class="sub"><b class="num">${Math.round(q.yds)}</b> yds now · final median <b class="num">${Math.round(q.median)}</b> (80% range ${Math.round(q.p10)}–${Math.round(q.p90)}) · pregame v3 ${Math.round(q.mu)}</div>
-        <table><thead><tr><th>Line</th><th class="r">Chance</th><th></th></tr></thead><tbody>
+        <div class="sub"><b class="num">${Math.round(q.yds)}</b> yds now · ${q.median == null ? "overtime isn't simulated" : `final median <b class="num">${Math.round(q.median)}</b> (80% range ${Math.round(q.p10)}–${Math.round(q.p90)})`} · pregame v3 ${Math.round(q.mu)}</div>
+        ${q.lines.length ? `<table><thead><tr><th>Line</th><th class="r">Chance</th><th></th></tr></thead><tbody>
         ${q.lines.map((l) => `<tr><td class="num">${l.line}+</td><td class="r num">${pct(l.p)}</td><td style="width:55%"><div class="bar"><i style="width:${(l.p * 100).toFixed(1)}%"></i></div></td></tr>`).join("")}
-        </tbody></table></section>`).join("");
+        </tbody></table>` : ""}</section>`).join("");
   }
 
   function schedule() {

@@ -70,7 +70,9 @@ def game_state(event: str, sb: dict | None = None, sm: dict | None = None) -> di
     """Current situation for one game. Keys: home, away, season, week, clock (game seconds left, regulation),
     period, display_clock, margin (home - away), pos (0 home / 1 away), kick, yl (yards to the goal), down, togo,
     passers {team: [(name, espn_id, att, yds)]}, last_play, feed_time (wall clock of the last play), status,
-    h2_receiver (0/1). `sb`/`sm`: an already-fetched scoreboard / summary (fetched here otherwise)."""
+    h2_receiver (0/1), overtime (in overtime, or regulation ended tied; the simulator stops at the end of
+    regulation, so the live app shows the situation without simulating; pos is None before the overtime
+    kickoff if ESPN hasn't posted the receiver). `sb`/`sm`: an already-fetched scoreboard / summary (fetched here otherwise)."""
     return add_summary(situation(event, sb), sm)
 
 
@@ -99,6 +101,11 @@ def situation(event: str, sb: dict | None = None) -> dict:
          "timeouts": [sit.get("homeTimeouts"), sit.get("awayTimeouts")]}
     pos_id = sit.get("possession")
     down = sit.get("down")
+    kind = (last.get("type") or {}).get("text") or ""
+    if pos_id not in ids and down and down > 0 and kind == "Kickoff":
+        # right after a return ESPN posts the down and spot but no possession; the returning team (the kickoff
+        # play's team) has the ball (20 of 20 cases in the 2026-10-12 BUF @ LA recording)
+        pos_id = (last.get("team") or {}).get("id")
     if pos_id in ids and down and down > 0:
         pos = ids[pos_id]
         offense = home if pos == 0 else away
@@ -112,6 +119,10 @@ def situation(event: str, sb: dict | None = None) -> dict:
         else:
             recv = ids.get(pos_id, 0)
         s.update(pos=recv, kick=True, yl=float("nan"), down=1, togo=10.0)
+        s["halftime"] = kind == "End of Half" or (period == 2 and qclock <= 0)  # receiver set by add_summary
+    s["overtime"] = period > 4 or (period == 4 and qclock <= 0 and margin == 0 and s["status"] == "in")
+    if s["overtime"] and kind == "End of Regulation":  # before the overtime kickoff; possession = the receiver
+        s.update(pos=ids.get(pos_id), kick=True, yl=float("nan"), down=1, togo=10.0)
     s["_ids"] = ids
     return s
 
@@ -145,14 +156,23 @@ def add_summary(s: dict, sm: dict | None = None) -> dict:
     drives = (sm.get("drives") or {}).get("previous") or []
     first = (drives[0].get("team") or {}).get("id") if drives else None
     s["h2_receiver"] = 1 - ids[first] if first in ids else 1
+    if s.pop("halftime", False):
+        s["pos"] = s["h2_receiver"]
     s["fetched_at"] = datetime.fromtimestamp(source.now(), timezone.utc).isoformat(timespec="seconds")
     return s
 
 
-SIGNATURE = ("status", "period", "clock", "home_score", "away_score", "pos", "kick", "yl", "down", "togo", "last_play")
+SIGNATURE = ("status", "period", "clock", "display_clock", "home_score", "away_score", "pos", "kick", "yl", "down", "togo", "last_play")
 
 
 def signature(s: dict) -> tuple:
     """What the simulation depends on, from a situation() or game_state(): unchanged signature, unchanged output
     (passing yards change only with a play, and every play changes the clock, the spot or the last-play text)."""
     return tuple(None if isinstance(v, float) and math.isnan(v) else v for v in (s.get(k) for k in SIGNATURE))
+
+
+def box(s: dict) -> tuple:
+    """The box score's passing lines from a game_state(): (team, espn_id, att, yds) per passer. ESPN's box score
+    often lags the scoreboard by a play (the yards of a completion arrive 20-60 s after it), so a game whose
+    signature is unchanged still needs re-simulating when this changes."""
+    return tuple(sorted((team, r[1], r[2], r[3]) for team, rows in (s.get("passers") or {}).items() for r in rows))

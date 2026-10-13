@@ -6,9 +6,10 @@
     state/<event>.json  LiveModel.compute_state for the game, from ESPN's feed as is
     status.json         heartbeat: when the worker last checked, per-game errors
 
-Each tick reads the scoreboard once and re-simulates a game only when its signature changes, plus once more
-`recheck` seconds later (ESPN's box score can lag the scoreboard, so passing yards may arrive after the play).
-Games before kickoff are recomputed every `pregame_every` seconds. A file is re-published only when its bytes
+Each tick reads the scoreboard once and re-simulates a game when its signature changes. ESPN's box score lags the
+scoreboard (in the 2026-10-12 BUF @ LA recording, 23 of 24 completions' yards arrived 20-60 s after the play), so
+the summary of each game in progress is also re-read every `box_every` seconds, and the game re-simulated when its
+passing lines change. Games before kickoff are recomputed every `pregame_every` seconds. A file is re-published only when its bytes
 change. Errors in one game are logged and reported in status.json; they don't stop the others.
 """
 
@@ -37,9 +38,9 @@ def _iso(t: float) -> str:
 @dataclass
 class GameTrack:
     sig: tuple | None = None  # signature of the last computed state
+    box: tuple | None = None  # its box score (espn.box)
     computed: float | None = None  # feed clock of the last computation
-    changed: float | None = None  # feed clock when the signature last changed
-    rechecked: bool = True  # the follow-up computation after a change is done
+    polled: float | None = None  # feed clock of the last summary fetch
     error: str | None = None
 
 
@@ -48,7 +49,7 @@ class Worker:
     ds: Dataset
     publisher: object
     every: float = 5.0
-    recheck: float = 10.0
+    box_every: float = 10.0
     pregame_every: float = 3600.0
     only: set[str] | None = None  # restrict to these events (tests)
     log: object = print
@@ -89,11 +90,13 @@ class Worker:
         return [g for g in espn.games(sb) if self.only is None or g["event"] in self.only]
 
     def _due(self, g: dict, t: GameTrack, sig: tuple, now: float) -> bool:
+        """The state must be recomputed (the box score aside)."""
         if t.sig is None or sig != t.sig:
             return True
-        if g["state"] == "in" and not t.rechecked and now - t.changed >= self.recheck:
-            return True
         return g["state"] == "pre" and now - t.computed >= self.pregame_every
+
+    def _poll_box(self, g: dict, t: GameTrack, now: float) -> bool:
+        return g["state"] == "in" and (t.polled is None or now - t.polled >= self.box_every)
 
     def tick(self) -> int:
         """One pass: scoreboard, games.json, changed games, status.json. Returns the number of games computed."""
@@ -108,17 +111,19 @@ class Worker:
             try:
                 sit = espn.situation(ev, sb)
                 sig = espn.signature(sit)
-                if not self._due(g, t, sig, now):
+                due = self._due(g, t, sig, now)
+                if not due and not self._poll_box(g, t, now):
+                    continue
+                s = espn.add_summary(sit, espn.summary(ev))
+                t.polled = now
+                box = espn.box(s)
+                if not due and box == t.box:
                     continue
                 started = time.perf_counter()
-                out = self.model.compute_state(espn.add_summary(sit, espn.summary(ev)))
+                out = self.model.compute_state(s)
                 self.computations += 1
                 n += 1
-                if sig != t.sig:
-                    t.changed, t.rechecked = now, t.sig is None  # no follow-up for the first computation
-                else:
-                    t.rechecked = True
-                t.sig, t.computed, t.error = sig, now, None
+                t.sig, t.box, t.computed, t.error = sig, box, now, None
                 wrote = self.put_json(f"state/{ev}.json", out)
                 self.log(f"{g['away']} @ {g['home']} {out['clock']}: {out['now']} "
                          f"({time.perf_counter() - started:.1f} s{'' if wrote else ', unchanged'})")

@@ -53,14 +53,15 @@ calibration) -> vectorized simulation from any game state -> CLI replay or live 
   next-snap states, the current drive's most likely outcomes (`simulate(..., drive=True)`), QB yardage chances, deterministically; `compute(event, overrides)` fetches then calls it;
   query-string overrides correct the feed's state; the page no longer has a form for them), `live_template.html` (the page).
 - `hosted/` — the web version (docs/hosting-plan.md). `worker.py`: `Worker.tick()` reads the scoreboard once,
-  re-simulates a game only when `espn.signature` changes (plus one recheck 10 s later, for box-score lag; pregame
-  hourly) and publishes `games.json`, `state/<event>.json`, `status.json` (heartbeat + per-game errors) and
+  re-simulates a game when `espn.signature` changes, or when its box score (`espn.box`, re-read every 10 s while
+  the game is in progress) catches up with a play (pregame: hourly) and publishes `games.json`, `state/<event>.json`, `status.json` (heartbeat + per-game errors) and
   `index.html`; unchanged bytes are not re-published. `publish.py`: `LocalDir` (atomic writes) and cache times.
   `index.html`: the live page, reading the JSON by relative URL, with a stale-data banner.
   No viewer input reaches the worker.
 
 Not modeled: penalties, explicit timeouts (only inside clock-used samples), onside kicks, overtime. The simulator is
-overconfident in the 4th quarter.
+overconfident in the 4th quarter. From a tied end of regulation (`state["overtime"]`) the live app shows the situation
+and passing yards without simulating (no chances, `homeWin` null).
 
 ## Caches (`data/live/`, gitignored except `wf_rows.parquet`)
 

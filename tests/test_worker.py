@@ -39,12 +39,13 @@ def _in_game(sb, event, *, period, clock, down, togo, spot, text, home_score=0, 
     return sb
 
 
-def _recording(path, *scoreboards, step=5.0):
-    """A recording: the snapshot at t0, then each scoreboard `step` seconds apart (summaries unchanged)."""
+def _recording(path, *scoreboards, step=5.0, extra=()):
+    """A recording: the snapshot at t0, then each scoreboard `step` seconds apart, plus `extra` rows
+    ({"t": seconds after t0, "url", "body"})."""
     snap = _snapshot()
     t0 = snap[SCOREBOARD]["t"]
     rows = list(snap.values()) + [{"t": t0 + step * (i + 1), "url": SCOREBOARD, "body": sb}
-                                  for i, sb in enumerate(scoreboards)]
+                                  for i, sb in enumerate(scoreboards)] + [{**r, "t": t0 + r["t"]} for r in extra]
     with gzip.open(path, "wt", encoding="utf-8") as f:
         for r in rows:
             f.write(json.dumps(r) + "\n")
@@ -111,22 +112,51 @@ def test_unchanged_games_are_not_recomputed_or_republished(tmp_path, model, repl
     assert w.publisher.puts[before:] == ["status.json"]  # the heartbeat moves; nothing else changed
 
 
-def test_a_new_play_is_simulated_once_then_rechecked_once(tmp_path, model, replay):
-    sb = _snapshot()[SCOREBOARD]["body"]
+def _with_passing(summary, team, name, espn_id, comp_att, yds):
+    """The summary with one passer's line in the box score."""
+    summary = copy.deepcopy(summary)
+    summary.setdefault("boxscore", {})["players"] = [{"team": {"abbreviation": team}, "statistics": [
+        {"name": "passing", "labels": ["C/ATT", "YDS"],
+         "athletes": [{"athlete": {"displayName": name, "id": espn_id}, "stats": [comp_att, str(yds)]}]}]}]
+    return summary
+
+
+def test_a_new_play_is_simulated_once_and_again_when_the_box_score_catches_up(tmp_path, model, replay):
+    snap = _snapshot()
+    sb, url = snap[SCOREBOARD]["body"], f"{espn.BASE}/summary?event={PRE}"
     kick = _in_game(sb, PRE, period=1, clock=900, down=1, togo=10, spot=25, text="Kickoff, touchback.")
-    play = _in_game(sb, PRE, period=1, clock=861, down=2, togo=4, spot=31, text="Run for 6 yards.")
-    t0 = _recording(tmp_path / "r.jsonl.gz", kick, play)
+    play = _in_game(sb, PRE, period=1, clock=861, down=1, togo=10, spot=37, text="Stafford pass to Nacua for 12 yards.")
+    late = _with_passing(snap[url]["body"], "LAR", "Matthew Stafford", "12483", "1/1", 12)
+    t0 = _recording(tmp_path / "r.jsonl.gz", kick, play, extra=[{"t": 22, "url": url, "body": late}])
     rp = replay(tmp_path / "r.jsonl.gz")
     w = _worker(tmp_path, model, [PRE])
     w.start()
     counts = []
-    for t in (0, 5, 10, 15, 20, 25, 30):  # kickoff state at +5, the run at +10, recheck 10 s after the last change
+    # kickoff state at +5, the pass at +10; its yards reach the box score at +22, read by the 10 s poll at +30
+    for t in (0, 5, 10, 15, 20, 25, 30, 35, 40):
         rp.seek(t0 + t)
         counts.append(w.tick())
-    assert counts == [1, 1, 1, 0, 1, 0, 0]
+    assert counts == [1, 1, 1, 0, 0, 0, 1, 0, 0]
     state = json.loads((tmp_path / "site" / "state" / f"{PRE}.json").read_text())
-    assert state["status"] == "in" and state["now"] == "LA ball · 2nd & 4 at LA 31"
-    assert state["lastPlay"] == "Run for 6 yards." and json.loads((tmp_path / "site" / "status.json").read_text())["live"] == 1
+    assert state["status"] == "in" and state["now"] == "LA ball · 1st & 10 at LA 37"
+    assert next(q for q in state["qbs"] if q["team"] == "LA")["yds"] == 12
+    assert json.loads((tmp_path / "site" / "status.json").read_text())["live"] == 1
+
+
+def test_overtime_shows_the_situation_without_chances(tmp_path, model, replay):
+    sb = _snapshot()[SCOREBOARD]["body"]
+    ot = _in_game(sb, PRE, period=5, clock=480, down=2, togo=5, spot=40, text="Run for 3 yards.",
+                  home_score=34, away_score=34)
+    t0 = _recording(tmp_path / "r.jsonl.gz", ot)
+    rp = replay(tmp_path / "r.jsonl.gz")
+    w = _worker(tmp_path, model, [PRE])
+    w.start()
+    rp.seek(t0 + 5)
+    assert w.tick() == 1
+    state = json.loads((tmp_path / "site" / "state" / f"{PRE}.json").read_text())
+    assert state["overtime"] and state["clock"] == "OT 8:00" and state["now"] == "LA ball · 2nd & 5 at LA 40"
+    assert state["homeWin"] is None and state["next"] == [] and state["drive"] is None
+    assert all(q["median"] is None and q["lines"] == [] for q in state["qbs"])
 
 
 def test_pregame_states_refresh_hourly(tmp_path, model, replay):

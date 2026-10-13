@@ -94,25 +94,35 @@ class Replay:
         return bodies[max(0, bisect.bisect_right(ts, self.now()) - 1)]
 
 
-def record(path: Path | str, every: float = 5.0, hours: float | None = None, once: bool = False, log=print) -> None:
-    """Poll ESPN like the hosted worker will and save every response: the scoreboard each `every` seconds, a game's
-    summary whenever its signature changes (and once at the start). Stops after `hours`, or Ctrl-C."""
+def record(path: Path | str, every: float = 5.0, hours: float | None = None, once: bool = False,
+           box_every: float = 10.0, log=print) -> None:
+    """Poll ESPN like the hosted worker does and save every response: the scoreboard each `every` seconds, a game's
+    summary whenever its signature changes (and once at the start), and each game in progress's summary every
+    `box_every` seconds (the box score lags the scoreboard). Stops after `hours`, or Ctrl-C."""
     from . import espn
 
     espn.use(Recorder(path))
     seen: dict[str, tuple] = {}
+    polled: dict[str, float] = {}
     stop = time.time() + hours * 3600 if hours else None
     try:
         while True:
             t0 = time.time()
-            sb = espn.scoreboard()
-            for e in sb.get("events", []):
-                sig = espn.signature(espn.situation(e["id"], sb))
-                if seen.get(e["id"]) != sig:
-                    espn.summary(e["id"])
-                    if e["id"] in seen:
-                        log(f"{time.strftime('%H:%M:%S')} {e['shortName']}: {sig[-1][:70]!r}")
-                    seen[e["id"]] = sig
+            try:
+                sb = espn.scoreboard()
+                for e in sb.get("events", []):
+                    sit = espn.situation(e["id"], sb)
+                    sig = espn.signature(sit)
+                    live = sit["status"] == "in" and time.time() - polled.get(e["id"], 0.0) >= box_every
+                    if seen.get(e["id"]) != sig or live:
+                        espn.summary(e["id"])
+                        polled[e["id"]] = time.time()
+                    if seen.get(e["id"]) != sig:
+                        if e["id"] in seen:
+                            log(f"{time.strftime('%H:%M:%S')} {e['shortName']}: {sig[-1][:70]!r}")
+                        seen[e["id"]] = sig
+            except (OSError, ValueError) as err:  # network trouble or a bad response: keep going, retry next poll
+                log(f"{time.strftime('%H:%M:%S')} poll failed: {type(err).__name__}: {err}")
             if once or (stop and time.time() >= stop):
                 break
             time.sleep(max(0.0, every - (time.time() - t0)))

@@ -1,7 +1,9 @@
 # Hosting plan: live game companion on the web
 
-Status (2026-10-12): phases 1–2 built and tested on a recorded snapshot plus a synthetic in-game play; still to
-check against a recorded live game. Nothing is deployed.
+Status (2026-10-13): phases 1–2 built and checked against a full recorded game (BUF @ LA, 2026-10-12, through
+overtime): 384 in-game updates with no errors, 0.08 s median per simulation (0.17 s max). Fixes from that replay:
+possession right after kickoff returns and at halftime, overtime shown without simulating, and box-score polling
+(ESPN posted a completion's yards 20–60 s after the play in 23 of 24 cases). Nothing is deployed.
 
 ## Goal
 
@@ -58,7 +60,8 @@ Loop every 5 s:
 
 1. Fetch the scoreboard; write `games.json` if it changed.
 2. For each game in progress whose signature changed: fetch its summary (passers), simulate, write
-   `state/<event>.json`.
+   `state/<event>.json`. Also re-read each live game's summary every 10 s and re-simulate when its passing lines
+   change: the box score lags the scoreboard by about a play.
 3. Pregame games: compute the kickoff state once, and again hourly so line changes show up.
 4. Finished games: write a final state once, then stop polling them.
 5. Write `status.json` (`{"updated": ..., "live_games": n, "last_error": ...}`) every tick as a heartbeat.
@@ -142,10 +145,10 @@ Cloudflare. Check current prices before signing up.
 
 | Risk | Mitigation |
 |---|---|
-| ESPN's API is unofficial and could change or block us | One scoreboard request per 5 s total, plus one summary per game per new play; keep the last good state and show the stale banner |
+| ESPN's API is unofficial and could change or block us | One scoreboard request per 5 s total, plus one summary per live game per 10 s or new play; keep the last good state and show the stale banner |
 | Wrong QB because `roster.csv` is stale | Before-kickoff check (above); show "may be out" as now |
 | Worker is a single point of failure | Automatic restart, heartbeat alerts, stale banner; a second machine isn't worth it yet |
-| Model limits (no penalties, timeouts, onside kicks, overtime; overconfident in the 4th quarter) | Keep the footer's caveats on the public page |
+| Model limits (no penalties, timeouts, onside kicks, overtime; overconfident in the 4th quarter) | Keep the footer's caveats on the public page; in overtime the page shows the situation and yards with no chances |
 | ESPN's week numbering (e.g. Monday night in week 5) | Already handled: the app uses ESPN's season and week |
 
 ## Phases
@@ -159,6 +162,9 @@ Cloudflare. Check current prices before signing up.
 
 ## Decisions needed from you
 
-1. **Domain**: which domain (or subdomain) to use, and is its DNS on Cloudflare or can it move there?
+1. **Domain**: `austingreen.net` (2026-10-13), on a subdomain such as `nfl.austingreen.net`. Its DNS is at
+   Squarespace (Google Cloud DNS name servers) and must move to Cloudflare for an R2 custom domain. The records to
+   carry over: `www` CNAME `ausgreen.github.io` and the apex A records (GitHub Pages), Google Workspace MX records,
+   and the SPF TXT record.
 2. **Worker host**: Fly.io (recommended) or a Hetzner server?
 3. **Audience**: public, or private (Cloudflare Access) to start?

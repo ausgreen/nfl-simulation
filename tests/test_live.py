@@ -76,6 +76,40 @@ def test_signature_is_comparable_with_nan_spots(replay):
     assert espn.signature(moved) != espn.signature(s)
 
 
+def _game(sb, event):
+    ev = next(e for e in sb["events"] if e["id"] == event)
+    return ev, {x["homeAway"]: x for x in ev["competitions"][0]["competitors"]}
+
+
+def test_overtime_is_flagged_from_a_tied_end_of_regulation(replay):
+    import copy
+
+    event = next(g["event"] for g in espn.games() if g["state"] == "pre")  # BUF @ LA
+    sb = copy.deepcopy(espn.scoreboard())
+    ev, t = _game(sb, event)
+    assert not espn.situation(event, sb)["overtime"]
+    ev["status"].update(period=4, clock=0.0, displayClock="0:00")
+    ev["status"]["type"].update(state="in")
+    t["home"]["score"] = t["away"]["score"] = "34"
+    ev["competitions"][0]["situation"] = {"down": 1, "distance": 10,
+                                          "lastPlay": {"text": "END QUARTER 4", "type": {"text": "End of Regulation"}}}
+    s = espn.situation(event, sb)
+    assert s["overtime"] and s["kick"] and s["pos"] is None  # receiver not posted yet
+    ev["status"].update(period=5, clock=600.0, displayClock="10:00")
+    ev["competitions"][0]["situation"]["possession"] = t["away"]["team"]["id"]  # the coin toss: BUF receives
+    s = espn.situation(event, sb)
+    assert s["overtime"] and s["kick"] and s["pos"] == 1
+    t["home"]["score"] = "37"
+    ev["status"].update(period=4)
+    assert not espn.situation(event, sb)["overtime"]  # regulation ended with a winner
+
+
+def test_box_signature_follows_the_passing_lines():
+    s = {"passers": {"LA": [("Matthew Stafford", "12483", 10, 88.0)], "BUF": []}}
+    assert espn.box(s) == (("LA", "12483", 10, 88.0),)
+    assert espn.box({"passers": {"LA": [("Matthew Stafford", "12483", 10, 100.0)]}}) != espn.box(s)
+
+
 @pytest.mark.slow
 def test_compute_state_matches_compute_and_is_deterministic(replay):
     from nflsim.data import load
@@ -106,6 +140,6 @@ def test_compute_reuses_the_result_until_the_play_or_corrections_change(replay):
     event = next(g["event"] for g in espn.games() if g["state"] == "pre")
     a = m.compute(event, {})
     assert m.compute(event, {}) is a
-    assert a["sig"] == app.sig_id(espn.situation(event))
+    assert a["sig"] == app.sig_id(espn.game_state(event))
     b = m.compute(event, {"down": "3"})
     assert b is not a and b["sig"] == a["sig"]
