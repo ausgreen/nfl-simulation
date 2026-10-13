@@ -40,6 +40,11 @@ button.primary { background: var(--accent); color: #fff; border-color: var(--acc
 .muted { color: var(--ink-3); }
 .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--accent-wash); color: var(--accent); }
 .badge.warn { background: var(--warn-wash); color: var(--warn); }
+.pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-weight: 700; background: var(--accent); color: var(--bg); white-space: nowrap; }
+.pill.sm { padding: 0 8px; font-size: 12px; font-weight: 600; }
+.pill.same { background: transparent; color: var(--ink-2); border: 1px solid var(--rule); }
+.pill.change { background: var(--warn); color: var(--bg); }
+.teams .has { box-shadow: inset 0 -4px 0 var(--accent); padding-bottom: 2px; }
 .grid2 { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 14px; align-items: start; }
 @media (max-width: 820px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
 h2 { margin: 0 0 10px; font-size: 15px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); }
@@ -54,9 +59,6 @@ td.r, th.r { text-align: right; }
 .qbs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 14px; }
 .qb h3 { margin: 0; font-size: 16px; }
 .qb .sub { color: var(--ink-2); margin: 2px 0 8px; }
-form.fix { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; align-items: end; }
-form.fix label { display: grid; gap: 3px; font-size: 12px; color: var(--ink-2); }
-form.fix input, form.fix select { width: 100%; }
 .err { color: var(--warn); }
 footer { color: var(--ink-3); font-size: 12.5px; }
 </style>
@@ -67,8 +69,9 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     <h1>Live Game Companion</h1>
     <div class="controls">
       <select id="game" aria-label="Game"></select>
-      <label class="muted"><input type="checkbox" id="auto" checked> auto-refresh</label>
-      <select id="every" aria-label="Refresh interval"><option value="10">10 s</option><option value="20" selected>20 s</option><option value="45">45 s</option></select>
+      <label class="muted"><input type="checkbox" id="auto" checked> update on each play</label>
+      <select id="every" aria-label="How often to check the feed for a new play"><option value="3">check every 3 s</option><option value="5" selected>check every 5 s</option><option value="10">check every 10 s</option></select>
+      <span class="muted" id="checked"></span>
       <button id="now" class="primary">Refresh</button>
     </div>
   </header>
@@ -77,37 +80,15 @@ footer { color: var(--ink-3); font-size: 12.5px; }
 
   <div class="grid2">
     <section class="panel">
-      <h2>The next snap: most likely outcomes</h2>
-      <table><thead><tr><th class="r">Chance</th><th></th><th>Outcome</th><th>Most often leads to</th></tr></thead><tbody id="next"></tbody></table>
+      <h2>The next snap</h2>
+      <table><thead><tr><th class="r">Chance</th><th></th><th>Outcome</th><th>Result</th></tr></thead><tbody id="next"></tbody></table>
       <div class="mix" id="mix"></div>
-      <p class="muted" style="margin:10px 0 0">Runs and completions are grouped by yards gained; everything else by what happened. “Most often leads to” is the most common situation after that outcome.</p>
     </section>
     <section class="panel">
-      <h2 id="drive-title">This drive: most likely outcomes</h2>
+      <h2 id="drive-title">This drive</h2>
       <table><thead><tr><th class="r">Chance</th><th></th><th>Outcome</th><th class="r">Plays</th><th class="r">Time</th></tr></thead><tbody id="drive"></tbody></table>
-      <div class="mix" id="drive-ep"></div>
-      <p class="muted" style="margin:10px 0 0">Simulated until the ball changes hands, a team scores, or the half ends. Plays and time are medians for that outcome.</p>
     </section>
   </div>
-
-  <section class="panel">
-      <h2>Correct the state</h2>
-      <form class="fix" id="fix">
-        <label>Ball <select name="pos"><option value="">feed</option><option value="home" id="opt-home">home</option><option value="away" id="opt-away">away</option></select></label>
-        <label>Down <select name="down"><option value="">feed</option><option>1</option><option>2</option><option>3</option><option>4</option></select></label>
-        <label>To go <input name="togo" type="number" min="1" max="99" placeholder="feed"></label>
-        <label>Spot <span style="display:flex;gap:4px"><select name="side"><option value="opp">opp</option><option value="own">own</option></select><input name="spot" type="number" min="1" max="99" placeholder="yd"></span></label>
-        <label>Quarter <select name="qtr"><option value="">feed</option><option>1</option><option>2</option><option>3</option><option>4</option></select></label>
-        <label>Clock <input name="mmss" placeholder="mm:ss"></label>
-        <label>Home score <input name="hs" type="number" min="0"></label>
-        <label>Away score <input name="as" type="number" min="0"></label>
-        <label>Home QB yds <input name="yds_home" type="number"></label>
-        <label>Away QB yds <input name="yds_away" type="number"></label>
-        <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" name="kick" style="width:auto"> kickoff next</label>
-        <span style="display:flex;gap:6px"><button type="submit" class="primary">Apply</button><button type="button" id="clear">Use feed</button></span>
-      </form>
-      <p class="muted" style="margin:8px 0 0">ESPN's feed runs behind TV. Fill only what is wrong; blanks keep the feed. Corrections stay until “Use feed”.</p>
-  </section>
 
   <section class="qbs" id="qbs"></section>
 
@@ -128,7 +109,6 @@ footer { color: var(--ink-3); font-size: 12.5px; }
   const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } },
                   set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} } };
   let timer = null, last = null, busy = false;
-  const fixes = () => { try { return JSON.parse(store.get("live:fix:" + $("game").value) || "{}"); } catch { return {}; } };
 
   async function loadGames() {
     const r = await fetch("/api/games"); const g = await r.json();
@@ -140,7 +120,7 @@ footer { color: var(--ink-3); font-size: 12.5px; }
   async function refresh() {
     if (busy || !$("game").value) return;
     busy = true;
-    const q = new URLSearchParams({ event: $("game").value, ...fixes() });
+    const q = new URLSearchParams({ event: $("game").value });
     try {
       const r = await fetch("/api/state?" + q); const d = await r.json();
       if (!r.ok) throw new Error(d.error || r.statusText);
@@ -151,15 +131,14 @@ footer { color: var(--ink-3); font-size: 12.5px; }
   }
 
   function render(d) {
-    $("opt-home").textContent = d.home; $("opt-away").textContent = d.away;
+    const side = (t, sc) => `<span${d.ball && d.ball.team === t ? ` class="has" title="${esc(t)} has the ball"` : ""}>${esc(t)} ${sc}</span>`;
+    const holder = (b) => b ? `${b.team} ${b.kick ? "receives" : "ball"}` : "";
     const age = d.feedTime ? Math.round((Date.now() - Date.parse(d.feedTime)) / 1000) : null;
-    const fixed = Object.keys(d.overrides || {}).length;
     const spread = d.line.spread == null ? "" : `line ${d.home} ${d.line.spread > 0 ? "−" + d.line.spread : "+" + Math.abs(d.line.spread)} · total ${d.line.total}`;
-    $("head").innerHTML = `<div class="score"><span class="teams">${esc(d.away)} ${d.score.away} – ${esc(d.home)} ${d.score.home}</span>
-        <span class="meta">${esc(fixed && d.overrides.clock ? d.clock + " (corrected)" : d.detail)}</span><span class="meta">${esc(spread)}</span>
-        <span class="badge">${esc(d.home)} win ${pct(d.homeWin)}</span>
-        ${fixed ? `<span class="badge warn">manual correction (${fixed})</span>` : ""}</div>
-      <div class="now">${esc(d.now)}</div>
+    $("head").innerHTML = `<div class="score"><span class="teams">${side(d.away, d.score.away)} – ${side(d.home, d.score.home)}</span>
+        <span class="meta">${esc(d.detail)}</span><span class="meta">${esc(spread)}</span>
+        <span class="badge">${esc(d.home)} win ${pct(d.homeWin)}</span></div>
+      <div class="now">${d.ball ? `<span class="pill">${esc(d.ball.team)} ${d.ball.kick ? "receives" : "ball"}</span> ${esc(d.ball.kick ? "Kickoff next" : d.ball.situation)}` : esc(d.now)}</div>
       <div class="muted">Last play: ${esc(d.lastPlay || "—")}${age != null ? ` · feed ${age < 120 ? age + " s" : Math.round(age / 60) + " min"} old` : ""} · updated ${new Date(d.fetchedAt).toLocaleTimeString()}</div>`;
     const max = Math.max(...d.next.map((x) => x.prob), 0.01);
     $("next").innerHTML = d.next.map((x) => {
@@ -167,18 +146,18 @@ footer { color: var(--ink-3); font-size: 12.5px; }
         return `<tr><td class="r num">${pct(x.prob, 1)}</td>
         <td style="width:24%"><div class="bar"><i style="width:${(x.prob / max * 100).toFixed(1)}%"></i></div></td>
         <td>${esc(x.outcome)}${x.score ? ` <span class="badge">${esc(x.score)}</span>` : ""}</td>
-        <td class="muted">${esc(x.state)}${extra ? `<br><span class="num">${esc(extra)}</span>` : ""}</td></tr>`; }).join("") +
+        <td class="muted">${x.situation == null ? esc(x.state) : (x.ball ? `<span class="pill sm ${x.change ? "change" : "same"}">${esc(holder({ team: x.ball, kick: x.kick }))}</span> ` : "") +
+          esc(x.kick ? (x.situation === "halftime kickoff" ? "Halftime kickoff" : "Kickoff") : x.situation)}${extra ? `<br><span class="num">${esc(extra)}</span>` : ""}</td></tr>`; }).join("") +
       `<tr><td class="r num muted">${pct(Math.max(0, 1 - d.next.reduce((a, x) => a + x.prob, 0)), 1)}</td><td></td><td class="muted" colspan="2">every other outcome</td></tr>`;
     const dv = d.drive || { team: "", kickoff: false, outcomes: [], expPts: null }, dmax = Math.max(...dv.outcomes.map((x) => x.prob), 0.01);
     const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
-    $("drive-title").textContent = !dv.team ? "This drive: most likely outcomes" : dv.kickoff ? `Next drive (${dv.team} receives): most likely outcomes` : `This drive (${dv.team} ball): most likely outcomes`;
+    $("drive-title").textContent = dv.kickoff ? "Next drive" : "This drive";
     $("drive").innerHTML = dv.outcomes.length ? dv.outcomes.map((x) => `<tr><td class="r num">${pct(x.prob, 1)}</td>
         <td style="width:24%"><div class="bar"><i style="width:${(x.prob / dmax * 100).toFixed(1)}%"></i></div></td>
         <td>${esc(cap(x.result))}${x.score ? ` <span class="badge">${esc(x.score)}</span>` : ""}</td>
         <td class="r num muted">${Math.round(x.plays)}</td><td class="r num muted">${esc(x.time)}</td></tr>`).join("") +
       `<tr><td class="r num muted">${pct(Math.max(0, 1 - dv.outcomes.reduce((a, x) => a + x.prob, 0)), 1)}</td><td></td><td class="muted" colspan="3">every other outcome</td></tr>`
       : `<tr><td class="muted" colspan="5">No drive in progress.</td></tr>`;
-    $("drive-ep").innerHTML = dv.expPts == null ? "" : `<span class="muted">Expected net points for ${esc(dv.team)} on this drive:</span> <span class="badge">${dv.expPts >= 0 ? "+" : "−"}${Math.abs(dv.expPts).toFixed(2)}</span>`;
     $("mix").innerHTML = `<span class="muted">Next play:</span>` + d.mix.map((m) => `<span class="badge">${esc(m.event)} ${pct(m.prob)}</span>`).join("");
     $("qbs").innerHTML = d.qbs.map((q) => `<section class="panel qb">
         <h3>${esc(q.qb || q.team)} <span class="muted">${esc(q.team)}</span> ${q.out ? `<span class="badge warn">may be out</span>` : ""}</h3>
@@ -188,27 +167,25 @@ footer { color: var(--ink-3); font-size: 12.5px; }
         </tbody></table></section>`).join("");
   }
 
-  function schedule() {
-    clearInterval(timer);
-    if ($("auto").checked) timer = setInterval(refresh, Number($("every").value) * 1000);
+  // cheap check of ESPN's scoreboard (no simulation); recompute only when the play changed
+  async function poll() {
+    if (busy || !$("game").value) return;
+    try {
+      const r = await fetch("/api/sig?" + new URLSearchParams({ event: $("game").value })); const d = await r.json();
+      if (!r.ok) throw new Error(d.error || r.statusText);
+      $("checked").textContent = `checked ${new Date().toLocaleTimeString()}`;
+      if (!last || last.event !== $("game").value || last.sig !== d.sig) refresh();
+    } catch (e) {
+      $("checked").textContent = `feed check failed: ${e.message}`;
+    }
   }
 
-  $("fix").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const f = new FormData(e.target), o = {};
-    for (const k of ["pos", "down", "togo", "yds_home", "yds_away"]) if (f.get(k)) o[k] = f.get(k);
-    if (f.get("spot")) o.yl = f.get("side") === "own" ? 100 - Number(f.get("spot")) : Number(f.get("spot"));
-    if (f.get("qtr") && f.get("mmss")) {
-      const [m, s] = f.get("mmss").split(":").map(Number);
-      o.clock = (4 - Number(f.get("qtr"))) * 900 + m * 60 + (s || 0);
-    }
-    if (f.get("hs") !== "" && f.get("as") !== "" && f.get("hs") != null) o.margin = Number(f.get("hs")) - Number(f.get("as"));
-    if (f.get("kick")) o.kick = "1";
-    store.set("live:fix:" + $("game").value, JSON.stringify(o));
-    refresh();
-  });
-  $("clear").addEventListener("click", () => { store.set("live:fix:" + $("game").value, null); $("fix").reset(); refresh(); });
-  $("game").addEventListener("change", () => { store.set("live:game", $("game").value); $("fix").reset(); refresh(); });
+  function schedule() {
+    clearInterval(timer);
+    if ($("auto").checked) timer = setInterval(poll, Number($("every").value) * 1000);
+  }
+
+  $("game").addEventListener("change", () => { store.set("live:game", $("game").value); refresh(); });
   $("now").addEventListener("click", refresh);
   $("auto").addEventListener("change", schedule);
   $("every").addEventListener("change", schedule);

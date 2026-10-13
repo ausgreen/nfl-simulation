@@ -5,13 +5,15 @@ after the next snap, from the team game simulator (nflsim/sim/), plus each start
 
 Also the most likely ways the drive in progress ends (the receiving team's drive if a kickoff is next).
 
-Stdlib HTTP server, local only. Endpoints: / (page), /api/games, /api/state?event=<id>[&overrides].
+Stdlib HTTP server, local only. Endpoints: / (page), /api/games, /api/state?event=<id>[&overrides], /api/sig?event=<id>
+(the game's play signature from the scoreboard alone, no simulation; the page re-requests the state when it changes).
 Overrides (any subset): pos=home|away, down, togo, yl (yards to the goal), clock (game seconds left), margin
 (home - away), kick=1 (a kickoff is next; pos = receiving team), yds_home, yds_away.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
 import traceback
@@ -59,6 +61,11 @@ def snap_buckets(event: np.ndarray, gain: np.ndarray) -> np.ndarray:
     return out
 
 
+def sig_id(s: dict) -> str:
+    """Short id of a situation()'s or game_state()'s signature: it changes with every play."""
+    return hashlib.sha1(repr(espn.signature(s)).encode()).hexdigest()[:12]
+
+
 def clock_text(clock: float) -> str:
     if clock <= 0:
         return "Final"
@@ -74,6 +81,7 @@ class LiveModel:
         self.setups: dict[int, PG.Setup] = {}
         self.week_preds: dict[tuple, pd.DataFrame] = {}
         self.params: dict[str, pd.Series] = {}
+        self.last: dict[str, tuple] = {}  # event -> (signature, corrections, output) of the last compute
 
     def setup(self, season: int) -> PG.Setup:
         if season not in self.setups:
@@ -134,7 +142,15 @@ class LiveModel:
         return mine[0][3], out, mine[0][0]
 
     def compute(self, event: str, ov: dict) -> dict:
-        return self.compute_state(espn.game_state(event), ov)
+        """compute_state from the live feed; re-simulates only when the play or the corrections changed."""
+        sit = espn.situation(event)
+        sig, key = espn.signature(sit), tuple(sorted(ov.items()))
+        hit = self.last.get(event)
+        if hit and hit[:2] == (sig, key):
+            return hit[2]
+        out = self.compute_state(espn.add_summary(sit), ov)
+        self.last[event] = (sig, key, out)
+        return out
 
     def compute_state(self, s: dict, ov: dict | None = None) -> dict:
         """Everything the page shows, from an espn.game_state() dict and optional corrections (`ov`, the
@@ -198,15 +214,17 @@ class LiveModel:
             pos, down, togo, yl, kick, margin, ended, half = key
             off, de = teams[int(pos)], teams[1 - int(pos)]
             if ended:
-                desc = "End of game"
+                situation = desc = "End of game"
             elif half:
-                desc = f"Halftime · {off} receives"
+                situation, desc = "halftime kickoff", f"Halftime · {off} receives"
             elif kick:
-                desc = f"Kickoff · {off} receives"
+                situation, desc = "kickoff", f"Kickoff · {off} receives"
             else:
-                desc = f"{off} ball · {ordinal(down)} & {'Goal' if togo >= yl else int(togo)} at {field(yl, off, de)}"
+                situation = f"{ordinal(down)} & {'Goal' if togo >= yl else int(togo)} at {field(yl, off, de)}"
+                desc = f"{off} ball · {situation}"
             gains = bucket.startswith(("Run", "Completion"))
-            top.append({"prob": len(g) / N_NEXT, "outcome": bucket, "state": desc,
+            top.append({"prob": len(g) / N_NEXT, "outcome": bucket, "state": desc, "situation": situation,
+                        "ball": None if ended else off, "kick": bool(kick or half), "change": bool(pos != st["pos"]),
                         "first": float(g["first"].mean()) if gains else None,
                         "onDowns": float(g.on_downs.mean()) if gains or bucket.startswith(("Incomplete", "Sack")) else None,
                         "score": score_after(margin) if margin != st["margin"] else None})
@@ -235,13 +253,15 @@ class LiveModel:
                              "score": score_after(margin) if margin != st["margin"] else None})
         drive = {"team": off, "kickoff": bool(st["kick"]), "outcomes": outcomes,
                  "expPts": float(d.net.sum() / N_DRIVE) if len(d) else None}
-        now = ("Kickoff · " + off + " receives") if st["kick"] else \
-            f"{off} ball · {ordinal(st['down'])} & {'Goal' if st['togo'] >= st['yl'] else int(st['togo'])} at {field(st['yl'], off, de)}"
+        situation = "kickoff" if st["kick"] else \
+            f"{ordinal(st['down'])} & {'Goal' if st['togo'] >= st['yl'] else int(st['togo'])} at {field(st['yl'], off, de)}"
+        now = f"Kickoff · {off} receives" if st["kick"] else f"{off} ball · {situation}"
+        ball = {"team": off, "kick": bool(st["kick"]), "situation": situation}
         if s["status"] == "post":
-            now = "Final"
-        return {"event": event, "home": home, "away": away, "status": s["status"], "detail": s["detail"],
+            now, ball = "Final", None
+        return {"event": event, "sig": sig_id(s), "home": home, "away": away, "status": s["status"], "detail": s["detail"],
                 "clock": clock_text(st["clock"]), "score": {"home": s["home_score"], "away": s["away_score"]},
-                "margin": st["margin"], "now": now, "lastPlay": s["last_play"], "feedTime": s["feed_time"],
+                "margin": st["margin"], "now": now, "ball": ball, "lastPlay": s["last_play"], "feedTime": s["feed_time"],
                 "fetchedAt": s["fetched_at"], "overrides": applied, "next": top, "drive": drive,
                 "mix": [{"event": e, "prob": float(p)} for e, p in mix.head(6).items()],
                 "qbs": qb, "homeWin": float(np.mean(final_margin > 0) + 0.5 * np.mean(final_margin == 0)),
@@ -284,6 +304,11 @@ def serve(port: int = 8765, ds: Dataset | None = None) -> None:
                     if not ev:
                         return self._send(400, {"error": "event required"})
                     self._send(200, model.compute(ev, q))
+                elif u.path == "/api/sig":
+                    if not q.get("event"):
+                        return self._send(400, {"error": "event required"})
+                    sit = espn.situation(q["event"])
+                    self._send(200, {"sig": sig_id(sit), "status": sit["status"]})
                 else:
                     self._send(404, {"error": "not found"})
             except Exception as e:  # report to the page instead of dropping the connection

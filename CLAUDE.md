@@ -51,12 +51,12 @@ calibration) -> vectorized simulation from any game state -> CLI replay or live 
   `Live`, `Recorder`, or `Replay` of a recording on a virtual clock; switch with `espn.use(...)`), `app.py` (stdlib
   `ThreadingHTTPServer`; `LiveModel.compute_state(state, overrides)` returns the current state, 5 most likely
   next-snap states, the current drive's most likely outcomes (`simulate(..., drive=True)`), QB yardage chances, deterministically; `compute(event, overrides)` fetches then calls it;
-  query-string overrides are the local page's manual corrections), `live_template.html` (the page).
+  query-string overrides correct the feed's state; the page no longer has a form for them), `live_template.html` (the page).
 - `hosted/` — the web version (docs/hosting-plan.md). `worker.py`: `Worker.tick()` reads the scoreboard once,
   re-simulates a game only when `espn.signature` changes (plus one recheck 10 s later, for box-score lag; pregame
   hourly) and publishes `games.json`, `state/<event>.json`, `status.json` (heartbeat + per-game errors) and
   `index.html`; unchanged bytes are not re-published. `publish.py`: `LocalDir` (atomic writes) and cache times.
-  `index.html`: the live page without corrections, reading the JSON by relative URL, with a stale-data banner.
+  `index.html`: the live page, reading the JSON by relative URL, with a stale-data banner.
   No viewer input reaches the worker.
 
 Not modeled: penalties, explicit timeouts (only inside clock-used samples), onside kicks, overtime. The simulator is

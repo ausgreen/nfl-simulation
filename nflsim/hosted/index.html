@@ -40,6 +40,11 @@ button.primary { background: var(--accent); color: #fff; border-color: var(--acc
 .muted { color: var(--ink-3); }
 .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--accent-wash); color: var(--accent); }
 .badge.warn { background: var(--warn-wash); color: var(--warn); }
+.pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-weight: 700; background: var(--accent); color: var(--bg); white-space: nowrap; }
+.pill.sm { padding: 0 8px; font-size: 12px; font-weight: 600; }
+.pill.same { background: transparent; color: var(--ink-2); border: 1px solid var(--rule); }
+.pill.change { background: var(--warn); color: var(--bg); }
+.teams .has { box-shadow: inset 0 -4px 0 var(--accent); padding-bottom: 2px; }
 .grid2 { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 14px; align-items: start; }
 @media (max-width: 820px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
 h2 { margin: 0 0 10px; font-size: 15px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); }
@@ -78,16 +83,13 @@ footer { color: var(--ink-3); font-size: 12.5px; }
 
   <div class="grid2">
     <section class="panel">
-      <h2>The next snap: most likely outcomes</h2>
-      <table><thead><tr><th class="r">Chance</th><th></th><th>Outcome</th><th>Most often leads to</th></tr></thead><tbody id="next"></tbody></table>
+      <h2>The next snap</h2>
+      <table><thead><tr><th class="r">Chance</th><th></th><th>Outcome</th><th>Result</th></tr></thead><tbody id="next"></tbody></table>
       <div class="mix" id="mix"></div>
-      <p class="muted" style="margin:10px 0 0">Runs and completions are grouped by yards gained; everything else by what happened. “Most often leads to” is the most common situation after that outcome.</p>
     </section>
     <section class="panel">
-      <h2 id="drive-title">This drive: most likely outcomes</h2>
+      <h2 id="drive-title">This drive</h2>
       <table><thead><tr><th class="r">Chance</th><th></th><th>Outcome</th><th class="r">Plays</th><th class="r">Time</th></tr></thead><tbody id="drive"></tbody></table>
-      <div class="mix" id="drive-ep"></div>
-      <p class="muted" style="margin:10px 0 0">Simulated until the ball changes hands, a team scores, or the half ends. Plays and time are medians for that outcome.</p>
     </section>
   </div>
 
@@ -157,12 +159,14 @@ footer { color: var(--ink-3); font-size: 12.5px; }
   }
 
   function render(d) {
+    const side = (t, sc) => `<span${d.ball && d.ball.team === t ? ` class="has" title="${esc(t)} has the ball"` : ""}>${esc(t)} ${sc}</span>`;
+    const holder = (b) => b ? `${b.team} ${b.kick ? "receives" : "ball"}` : "";
     const age = d.feedTime ? Math.round((Date.now() - Date.parse(d.feedTime)) / 1000) : null;
     const spread = d.line.spread == null ? "" : `line ${d.home} ${d.line.spread > 0 ? "−" + d.line.spread : "+" + Math.abs(d.line.spread)} · total ${d.line.total}`;
-    $("head").innerHTML = `<div class="score"><span class="teams">${esc(d.away)} ${d.score.away} – ${esc(d.home)} ${d.score.home}</span>
+    $("head").innerHTML = `<div class="score"><span class="teams">${side(d.away, d.score.away)} – ${side(d.home, d.score.home)}</span>
         <span class="meta">${esc(d.detail)}</span><span class="meta">${esc(spread)}</span>
         <span class="badge">${esc(d.home)} win ${pct(d.homeWin)}</span></div>
-      <div class="now">${esc(d.now)}</div>
+      <div class="now">${d.ball ? `<span class="pill">${esc(d.ball.team)} ${d.ball.kick ? "receives" : "ball"}</span> ${esc(d.ball.kick ? "Kickoff next" : d.ball.situation)}` : esc(d.now)}</div>
       <div class="muted">Last play: ${esc(d.lastPlay || "—")}${age != null ? ` · last play ${ago(age)} ago` : ""}</div>`;
     const max = Math.max(...d.next.map((x) => x.prob), 0.01);
     $("next").innerHTML = d.next.map((x) => {
@@ -170,18 +174,18 @@ footer { color: var(--ink-3); font-size: 12.5px; }
         return `<tr><td class="r num">${pct(x.prob, 1)}</td>
         <td style="width:24%"><div class="bar"><i style="width:${(x.prob / max * 100).toFixed(1)}%"></i></div></td>
         <td>${esc(x.outcome)}${x.score ? ` <span class="badge">${esc(x.score)}</span>` : ""}</td>
-        <td class="muted">${esc(x.state)}${extra ? `<br><span class="num">${esc(extra)}</span>` : ""}</td></tr>`; }).join("") +
+        <td class="muted">${x.situation == null ? esc(x.state) : (x.ball ? `<span class="pill sm ${x.change ? "change" : "same"}">${esc(holder({ team: x.ball, kick: x.kick }))}</span> ` : "") +
+          esc(x.kick ? (x.situation === "halftime kickoff" ? "Halftime kickoff" : "Kickoff") : x.situation)}${extra ? `<br><span class="num">${esc(extra)}</span>` : ""}</td></tr>`; }).join("") +
       `<tr><td class="r num muted">${pct(Math.max(0, 1 - d.next.reduce((a, x) => a + x.prob, 0)), 1)}</td><td></td><td class="muted" colspan="2">every other outcome</td></tr>`;
     const dv = d.drive || { team: "", kickoff: false, outcomes: [], expPts: null }, dmax = Math.max(...dv.outcomes.map((x) => x.prob), 0.01);
     const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
-    $("drive-title").textContent = !dv.team ? "This drive: most likely outcomes" : dv.kickoff ? `Next drive (${dv.team} receives): most likely outcomes` : `This drive (${dv.team} ball): most likely outcomes`;
+    $("drive-title").textContent = dv.kickoff ? "Next drive" : "This drive";
     $("drive").innerHTML = dv.outcomes.length ? dv.outcomes.map((x) => `<tr><td class="r num">${pct(x.prob, 1)}</td>
         <td style="width:24%"><div class="bar"><i style="width:${(x.prob / dmax * 100).toFixed(1)}%"></i></div></td>
         <td>${esc(cap(x.result))}${x.score ? ` <span class="badge">${esc(x.score)}</span>` : ""}</td>
         <td class="r num muted">${Math.round(x.plays)}</td><td class="r num muted">${esc(x.time)}</td></tr>`).join("") +
       `<tr><td class="r num muted">${pct(Math.max(0, 1 - dv.outcomes.reduce((a, x) => a + x.prob, 0)), 1)}</td><td></td><td class="muted" colspan="3">every other outcome</td></tr>`
       : `<tr><td class="muted" colspan="5">No drive in progress.</td></tr>`;
-    $("drive-ep").innerHTML = dv.expPts == null ? "" : `<span class="muted">Expected net points for ${esc(dv.team)} on this drive:</span> <span class="badge">${dv.expPts >= 0 ? "+" : "−"}${Math.abs(dv.expPts).toFixed(2)}</span>`;
     $("mix").innerHTML = `<span class="muted">Next play:</span>` + d.mix.map((m) => `<span class="badge">${esc(m.event)} ${pct(m.prob)}</span>`).join("");
     $("qbs").innerHTML = d.qbs.map((q) => `<section class="panel qb">
         <h3>${esc(q.qb || q.team)} <span class="muted">${esc(q.team)}</span> ${q.out ? `<span class="badge warn">may be out</span>` : ""}</h3>

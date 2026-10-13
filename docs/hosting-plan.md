@@ -39,7 +39,7 @@ ESPN scoreboard (1 request / 5 s, all games)
 - **CDN bucket**: holds static files only. Viewers never reach the worker, so viewer count does not touch it.
 - **No corrections.** The hosted version shows ESPN's feed as is; viewers cannot change down, distance, clock or
   score (decided 2026-10-12). The worker accepts no input from viewers at all, so there is nothing to abuse.
-  The local `nflsim live serve` keeps its corrections form.
+  (The local `nflsim live serve` page no longer has its corrections form either; the API still takes overrides.)
 
 ## Components to build
 

@@ -30,7 +30,7 @@ uv run pytest                            # tests (tests/fixtures/ holds a record
   lines' implied points, and draws per-game QB form; `states.py` turns pbp rows into simulator states;
   `pregame.py` is the shared set-up.
 - `live/app.py` (stdlib server, 127.0.0.1 only): ESPN scoreboard/summary -> simulator state, the 5 most likely
-  states after the next snap, the most likely ways the current drive ends, QB yardage chances, manual corrections.
+  states after the next snap, the most likely ways the current drive ends, QB yardage chances.
 - Not modeled: penalties, timeouts (only inside clock-used samples), onside kicks, overtime. Overconfident in the
   4th quarter.
 

@@ -95,3 +95,17 @@ def test_compute_state_matches_compute_and_is_deterministic(replay):
     assert {o["result"] for o in dv["outcomes"]} <= set(DRIVE_RESULTS)
     assert sum(o["prob"] for o in dv["outcomes"]) <= 1
     assert all((o["score"] is not None) == (o["result"] in ("touchdown", "field goal")) for o in dv["outcomes"])
+
+
+@pytest.mark.slow
+def test_compute_reuses_the_result_until_the_play_or_corrections_change(replay):
+    from nflsim.data import load
+    from nflsim.live import app
+
+    m = app.LiveModel(load())
+    event = next(g["event"] for g in espn.games() if g["state"] == "pre")
+    a = m.compute(event, {})
+    assert m.compute(event, {}) is a
+    assert a["sig"] == app.sig_id(espn.situation(event))
+    b = m.compute(event, {"down": "3"})
+    assert b is not a and b["sig"] == a["sig"]
