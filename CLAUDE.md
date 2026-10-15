@@ -20,6 +20,8 @@ uv run nflsim fetch [--since YEAR]       # refresh nflverse stats + schedules, t
 uv run nflsim --csv sim game <id>        # global flags (--csv, --data DIR) go before the subcommand
 uv run nflsim feed record <file.jsonl.gz> [--hours H | --once]   # record the ESPN feed for replay
 uv run nflsim worker [--out site] [--replay <rec> --speed 10] [--once]   # hosted worker (see below)
+uv run nflsim worker --publish r2 [--once]   # publish to R2 (needs `uv sync --extra hosted` and R2_* env vars)
+deploy/push.sh <server-ip>               # deploy the worker to the Hetzner server (docs/deploy.md) — ask first
 uv run pytest                            # ~11 s; `-m "not slow"` skips the tests that run the simulator
 ```
 
@@ -55,7 +57,8 @@ calibration) -> vectorized simulation from any game state -> CLI replay or live 
 - `hosted/` — the web version (docs/hosting-plan.md). `worker.py`: `Worker.tick()` reads the scoreboard once,
   re-simulates a game when `espn.signature` changes, or when its box score (`espn.box`, re-read every 10 s while
   the game is in progress) catches up with a play (pregame: hourly) and publishes `games.json`, `state/<event>.json`, `status.json` (heartbeat + per-game errors) and
-  `index.html`; unchanged bytes are not re-published. `publish.py`: `LocalDir` (atomic writes) and cache times.
+  `index.html`; unchanged bytes are not re-published; polls every 60 s between game windows, retries a failing game
+  after 60 s. `publish.py`: `LocalDir` (atomic writes), `S3Compatible` (R2 via boto3, `hosted` extra) and cache times.
   `index.html`: the live page, reading the JSON by relative URL, with a stale-data banner.
   No viewer input reaches the worker.
 
@@ -78,4 +81,5 @@ and passing yards without simulating (no chances, `homeWin` null).
 `docs/hosting-plan.md`: host the live companion as a single worker that polls ESPN, re-simulates only on state
 changes, and writes static JSON to a CDN bucket. No corrections in the hosted version. Phases 1–2 (fetch/compute
 split, recorder, replay, worker, local publisher, static page) are built; phase 3 (R2 publisher, Docker,
-deployment) is next.
+deployment) is built but not deployed: `nfl.austingreen.net` (R2 + Cloudflare Access), worker on a Hetzner server (Docker Compose);
+`docs/deploy.md` has the set-up steps.

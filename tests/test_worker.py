@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from nflsim.hosted.publish import LocalDir, max_age
+from nflsim.hosted.publish import LocalDir, S3Compatible, max_age
 from nflsim.hosted.worker import PAGE, Worker
 from nflsim.live import espn, feed
 
@@ -171,7 +171,7 @@ def test_pregame_states_refresh_hourly(tmp_path, model, replay):
 
 
 def test_one_failing_game_does_not_stop_the_others(tmp_path, model, replay, monkeypatch):
-    replay(SNAPSHOT)
+    rp = replay(SNAPSHOT)
     w = _worker(tmp_path, model, [PRE, POST])
     real = model.compute_state
     monkeypatch.setattr(model, "compute_state",
@@ -182,9 +182,25 @@ def test_one_failing_game_does_not_stop_the_others(tmp_path, model, replay, monk
     assert (site / "state" / f"{PRE}.json").exists() and not (site / "state" / f"{POST}.json").exists()
     assert json.loads((site / "status.json").read_text())["errors"] == {POST: "RuntimeError: boom"}
     monkeypatch.setattr(model, "compute_state", real)
-    w.tick()  # retried on the next tick, error cleared
+    w.tick()
+    assert not (site / "state" / f"{POST}.json").exists()  # not retried right away
+    rp.advance(w.retry)
+    w.tick()  # retried after `retry` seconds, error cleared
     assert (site / "state" / f"{POST}.json").exists()
     assert json.loads((site / "status.json").read_text())["errors"] == {}
+
+
+def test_polls_slowly_between_game_windows(tmp_path, model, replay):
+    rp = replay(SNAPSHOT)  # BUF @ LA kicks off 2026-10-13T00:15Z; the snapshot is from earlier that day
+    w = _worker(tmp_path, model, [PRE, POST])
+    w.start()
+    w.tick()
+    kickoff = 1791850500.0  # 2026-10-13T00:15:00Z
+    assert rp.now() < kickoff - w.soon and w.interval == w.idle_every
+    rp.seek(kickoff - w.soon + 1)
+    w.tick()
+    assert w.interval == w.every
+    assert json.loads((tmp_path / "site" / "status.json").read_text())["every"] == w.every
 
 
 @pytest.mark.parametrize("path,seconds", [("state/1.json", 3), ("games.json", 3), ("status.json", 0), ("index.html", 300)])
@@ -198,3 +214,26 @@ def test_page_has_no_corrections_and_uses_relative_urls():
         assert gone not in html
     for used in ('getJSON("games.json")', "getJSON(`state/", 'getJSON("status.json")'):
         assert used in html
+
+
+def test_r2_publisher_sends_cache_headers():
+    import boto3
+    from botocore.stub import Stubber
+
+    client = boto3.client("s3", endpoint_url="https://acct.r2.cloudflarestorage.com", region_name="auto",
+                          aws_access_key_id="k", aws_secret_access_key="s")
+    pub = S3Compatible.from_env({"R2_BUCKET": "nflsim", "R2_ACCOUNT_ID": "acct", "R2_ACCESS_KEY_ID": "k",
+                                 "R2_SECRET_ACCESS_KEY": "s"}, client=client)
+    with Stubber(client) as stub:
+        for key, ctype, cache in (("state/1.json", "application/json", "public, max-age=3"),
+                                  ("status.json", "application/json", "no-cache")):
+            stub.add_response("put_object", {}, {"Bucket": "nflsim", "Key": key, "Body": b"{}", "ContentType": ctype,
+                                                 "CacheControl": cache})
+        pub.put("state/1.json", b"{}", "application/json", max_age("state/1.json"))
+        pub.put("status.json", b"{}", "application/json", max_age("status.json"))
+        stub.assert_no_pending_responses()
+
+
+def test_r2_publisher_names_missing_settings():
+    with pytest.raises(SystemExit, match="R2_SECRET_ACCESS_KEY, R2_ACCOUNT_ID"):
+        S3Compatible.from_env({"R2_BUCKET": "nflsim", "R2_ACCESS_KEY_ID": "k"}, client=object())

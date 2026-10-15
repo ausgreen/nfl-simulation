@@ -3,7 +3,10 @@
 Status (2026-10-13): phases 1–2 built and checked against a full recorded game (BUF @ LA, 2026-10-12, through
 overtime): 384 in-game updates with no errors, 0.08 s median per simulation (0.17 s max). Fixes from that replay:
 possession right after kickoff returns and at halftime, overtime shown without simulating, and box-score polling
-(ESPN posted a completion's yards 20–60 s after the play in 23 of 24 cases). Nothing is deployed.
+(ESPN posted a completion's yards 20–60 s after the play in 23 of 24 cases). Phase 3 code is built (R2 publisher, Dockerfile, `compose.yaml`; set-up steps in `deploy.md`). Cloudflare (DNS, R2,
+custom domain, Access) is set up; a first deploy to Fly.io ran but its shared CPU was throttled to 1/16 of a core, so
+the worker moves to a Hetzner server.
+Nothing is deployed.
 
 ## Goal
 
@@ -115,7 +118,7 @@ A later improvement: flag games where ESPN's listed or active passer differs fro
 
 | Piece | Recommended | Alternative | Rough cost |
 |---|---|---|---|
-| Worker | Fly.io, 1 shared-CPU machine, 1 GB RAM, with a volume | Hetzner server + Docker + systemd | $5–10/mo |
+| Worker | Hetzner CX22 (2 vCPU, 4 GB) + Docker Compose | Hetzner server + Docker + systemd | $5–10/mo |
 | Bucket + CDN | Cloudflare R2 + a custom domain on Cloudflare | AWS S3 + CloudFront | ~$0–5/mo at 10k viewers |
 | Access | Public, or Cloudflare Access (free up to 50 users) for a private beta | Basic auth | $0 |
 
@@ -160,11 +163,13 @@ Cloudflare. Check current prices before signing up.
 | 3 | Dockerfile, R2 publisher, deploy to Fly.io + R2 behind a private Cloudflare Access login | One live Sunday followed from a phone with no errors in `status.json` |
 | 4 | Weekly refresh schedule, monitoring, open to the public | A full week runs without manual steps except the roster |
 
-## Decisions needed from you
+## Decisions (2026-10-13)
 
 1. **Domain**: `austingreen.net` (2026-10-13), on a subdomain such as `nfl.austingreen.net`. Its DNS is at
    Squarespace (Google Cloud DNS name servers) and must move to Cloudflare for an R2 custom domain. The records to
    carry over: `www` CNAME `ausgreen.github.io` and the apex A records (GitHub Pages), Google Workspace MX records,
    and the SPF TXT record.
-2. **Worker host**: Fly.io (recommended) or a Hetzner server?
-3. **Audience**: public, or private (Cloudflare Access) to start?
+   DNS moves to Cloudflare; the site is `nfl.austingreen.net`.
+2. **Worker host**: a Hetzner server (2 vCPU, 4 GB), Docker Compose (2026-10-15). Fly.io was tried first: its
+   shared CPU gave the worker 6.5% of a core, and start-up hadn't finished after 12 minutes.
+3. **Audience**: private (Cloudflare Access) to start.

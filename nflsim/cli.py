@@ -72,7 +72,7 @@ def cmd_live(ds, a):
 
 
 def cmd_worker(ds, a):
-    from .hosted.publish import LocalDir
+    from .hosted.publish import LocalDir, S3Compatible
     from .hosted.worker import Worker
     from .live import espn, feed
 
@@ -84,8 +84,13 @@ def cmd_worker(ds, a):
         print(f"replaying {a.replay} at {a.speed:g}x")
     elif a.record:
         espn.use(feed.Recorder(a.record))
-    w = Worker(ds, LocalDir(a.out), every=a.every, only=set(a.game) if a.game else None)
-    print(f"publishing to {a.out}/ (serve it: python -m http.server -d {a.out} 8000)")
+    if a.publish == "r2":
+        pub = S3Compatible.from_env()
+        print(f"publishing to bucket {pub.bucket}")
+    else:
+        pub = LocalDir(a.out)
+        print(f"publishing to {a.out}/ (serve it: python -m http.server -d {a.out} 8000)")
+    w = Worker(ds, pub, every=a.every, only=set(a.game) if a.game else None)
     if a.once:
         w.start()
         w.tick()
@@ -122,7 +127,9 @@ def main(argv=None) -> None:
     s.set_defaults(fn=cmd_live)
 
     s = sub.add_parser("worker", help="hosted worker: poll ESPN, simulate changed games, publish static JSON + page")
-    s.add_argument("--out", default="site", help="directory to publish into (default: site/)")
+    s.add_argument("--publish", choices=["local", "r2"], default="local",
+                   help="local: a directory (--out); r2: the R2 bucket named by $R2_BUCKET (docs/deploy.md)")
+    s.add_argument("--out", default="site", help="with --publish local: directory to publish into (default: site/)")
     s.add_argument("--every", type=float, default=5.0, help="seconds between scoreboard polls")
     s.add_argument("--replay", help="read the feed from a recording instead of ESPN")
     s.add_argument("--speed", type=float, default=10.0, help="with --replay: multiple of real time")

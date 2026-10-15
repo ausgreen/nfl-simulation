@@ -10,11 +10,14 @@ dependencies = [
     "scikit-learn>=1.9.1",
 ]
 
+[project.optional-dependencies]
+hosted = ["boto3>=1.36"]  # the R2 publisher (nflsim worker --publish r2)
+
 [project.scripts]
 nflsim = "nflsim.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "boto3>=1.36"]
 
 [build-system]
 requires = ["hatchling"]

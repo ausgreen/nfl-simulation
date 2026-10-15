@@ -1,0 +1,12 @@
+# The hosted worker on the server (docs/deploy.md): `docker compose up -d --build` in /opt/nflsim.
+services:
+  worker:
+    build: .
+    image: nflsim-worker
+    restart: unless-stopped
+    env_file: .env                  # R2_BUCKET, R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
+    volumes:
+      - ./data/live:/app/data/live  # caches (simulator set-up, week predictions) survive rebuilds
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}

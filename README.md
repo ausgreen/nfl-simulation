@@ -17,6 +17,7 @@ uv run nflsim feed record recordings/<name>.jsonl.gz --hours 4   # save the ESPN
 uv run nflsim worker --out site          # hosted worker: poll ESPN, publish static JSON + page into site/
 uv run nflsim worker --replay <recording> --speed 10   # the same, from a recorded feed
 python -m http.server -d site 8000       # view the published site locally
+deploy/push.sh <server-ip>               # deploy the worker to the server (docs/deploy.md)
 uv run pytest                            # tests (tests/fixtures/ holds a recorded week-5 snapshot)
 ```
 

@@ -1,0 +1,27 @@
+#cloud-config
+# Hetzner server set-up (docs/deploy.md): paste into "Cloud config" when creating the server.
+# A user "deploy" that logs in with your SSH key only; Docker; automatic security updates; no inbound ports but SSH.
+users:
+  - name: deploy
+    groups: [sudo, docker]
+    shell: /bin/bash
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHqcJAt0ECnrqWma/kFNIAUTjJEAp6IrrTPTmqBc2Cic adgreen9019@gmail.com
+package_update: true
+package_upgrade: true
+packages: [docker.io, docker-compose-v2, rsync, ufw, fail2ban, unattended-upgrades]
+write_files:
+  - path: /etc/ssh/sshd_config.d/90-nflsim.conf
+    content: |
+      PermitRootLogin no
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+runcmd:
+  - [ufw, default, deny, incoming]
+  - [ufw, allow, OpenSSH]
+  - [ufw, --force, enable]
+  - [systemctl, enable, --now, docker, fail2ban]
+  - [systemctl, restart, ssh]
+  - [mkdir, -p, /opt/nflsim/data/live]
+  - [chown, -R, "deploy:deploy", /opt/nflsim]

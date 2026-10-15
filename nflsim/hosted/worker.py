@@ -10,7 +10,9 @@ Each tick reads the scoreboard once and re-simulates a game when its signature c
 scoreboard (in the 2026-10-12 BUF @ LA recording, 23 of 24 completions' yards arrived 20-60 s after the play), so
 the summary of each game in progress is also re-read every `box_every` seconds, and the game re-simulated when its
 passing lines change. Games before kickoff are recomputed every `pregame_every` seconds. A file is re-published only when its bytes
-change. Errors in one game are logged and reported in status.json; they don't stop the others.
+change. Errors in one game are logged and reported in status.json; they don't stop the others, and the game is
+retried after `retry` seconds (a failing upstream, e.g. Open-Meteo for the week's predictions, isn't hammered).
+With no game in progress or starting within `soon` seconds, the scoreboard is polled every `idle_every` seconds.
 """
 
 from __future__ import annotations
@@ -42,6 +44,7 @@ class GameTrack:
     computed: float | None = None  # feed clock of the last computation
     polled: float | None = None  # feed clock of the last summary fetch
     error: str | None = None
+    failed: float | None = None  # feed clock of the last error
 
 
 @dataclass
@@ -51,12 +54,16 @@ class Worker:
     every: float = 5.0
     box_every: float = 10.0
     pregame_every: float = 3600.0
+    idle_every: float = 60.0
+    soon: float = 900.0
+    retry: float = 60.0
     only: set[str] | None = None  # restrict to these events (tests)
     log: object = print
     model: LiveModel = None
     games: dict[str, GameTrack] = field(default_factory=dict)
     published: dict[str, str] = field(default_factory=dict)  # path -> hash of the bytes last published
     computations: int = 0
+    interval: float = 0.0  # seconds until the next tick, set by tick()
 
     def __post_init__(self):
         self.model = self.model or LiveModel(self.ds)
@@ -95,6 +102,15 @@ class Worker:
             return True
         return g["state"] == "pre" and now - t.computed >= self.pregame_every
 
+    def _interval(self, games: list[dict], now: float) -> float:
+        def starting(g):
+            try:
+                return datetime.fromisoformat(g["kickoff"].replace("Z", "+00:00")).timestamp() - now <= self.soon
+            except (KeyError, ValueError):
+                return True
+        busy = any(g["state"] == "in" or (g["state"] == "pre" and starting(g)) for g in games)
+        return self.every if busy else max(self.every, self.idle_every)
+
     def _poll_box(self, g: dict, t: GameTrack, now: float) -> bool:
         return g["state"] == "in" and (t.polled is None or now - t.polled >= self.box_every)
 
@@ -109,6 +125,8 @@ class Worker:
             ev = g["event"]
             t = self.games.setdefault(ev, GameTrack())
             try:
+                if t.error and now - t.failed < self.retry:
+                    continue
                 sit = espn.situation(ev, sb)
                 sig = espn.signature(sit)
                 due = self._due(g, t, sig, now)
@@ -128,16 +146,17 @@ class Worker:
                 self.log(f"{g['away']} @ {g['home']} {out['clock']}: {out['now']} "
                          f"({time.perf_counter() - started:.1f} s{'' if wrote else ', unchanged'})")
             except Exception as e:
-                t.error = f"{type(e).__name__}: {e}"
+                t.error, t.failed = f"{type(e).__name__}: {e}", now
                 self.log(f"{g['away']} @ {g['home']}: {t.error}")
                 traceback.print_exc()
+        self.interval = self._interval(games, now)
         self.put_json("status.json", {
-            "updated": _iso(now), "every": self.every, "live": sum(g["state"] == "in" for g in games),
+            "updated": _iso(now), "every": self.interval, "live": sum(g["state"] == "in" for g in games),
             "errors": {ev: t.error for ev, t in self.games.items() if t.error}})
         return n
 
     def run(self, until=None) -> None:
-        """Tick every `every` seconds (wall clock) until `until()` is true or Ctrl-C."""
+        """Tick every `interval` seconds (wall clock) until `until()` is true or Ctrl-C."""
         self.start()
         try:
             while not (until and until()):
@@ -146,6 +165,6 @@ class Worker:
                     self.tick()
                 except Exception as e:  # the scoreboard itself failed: keep the last files, try again
                     self.log(f"tick failed: {type(e).__name__}: {e}")
-                time.sleep(max(0.0, self.every - (time.monotonic() - t0)))
+                time.sleep(max(0.0, (self.interval or self.every) - (time.monotonic() - t0)))
         except KeyboardInterrupt:
             pass

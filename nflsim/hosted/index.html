@@ -153,8 +153,9 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     if (!st) { el.hidden = false; el.textContent = "Can't reach the update service; numbers may be out of date."; return; }
     const behind = (Date.now() - Date.parse(st.updated)) / 1000;
     const err = (st.errors || {})[event];
-    el.hidden = behind <= STALE_S && !err;
-    el.textContent = behind > STALE_S ? `Updates have paused: the last check of ESPN's feed was ${ago(behind)} ago. Numbers may be out of date.`
+    const limit = Math.max(STALE_S, 2.5 * (st.every || 0));  // the worker checks less often between game windows
+    el.hidden = behind <= limit && !err;
+    el.textContent = behind > limit ? `Updates have paused: the last check of ESPN's feed was ${ago(behind)} ago. Numbers may be out of date.`
       : err ? "This game's latest update failed; showing the last good numbers." : "";
   }
 
