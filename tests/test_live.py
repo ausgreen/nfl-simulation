@@ -143,3 +143,20 @@ def test_compute_reuses_the_result_until_the_play_or_corrections_change(replay):
     assert a["sig"] == app.sig_id(espn.game_state(event))
     b = m.compute(event, {"down": "3"})
     assert b is not a and b["sig"] == a["sig"]
+
+
+@pytest.mark.slow
+def test_quarters_add_up_to_the_final(replay):
+    from nflsim.data import load
+    from nflsim.live import app
+
+    m = app.LiveModel(load())
+    pre = m.compute(next(g["event"] for g in espn.games() if g["state"] == "pre"), {})
+    qs = pre["quarters"]
+    assert [q["q"] for q in qs] == [1, 2, 3, 4] and all(q["state"] == "next" for q in qs)
+    for side in ("home", "away"):
+        assert math.isclose(sum(q[side] for q in qs), pre["final"][side], rel_tol=1e-9)
+    assert all(math.isclose(q["homeWin"] + q["awayWin"] + q["tie"], 1) for q in qs)
+    post = m.compute(next(g["event"] for g in espn.games() if g["state"] == "post"), {})
+    assert all(q["state"] == "done" for q in post["quarters"])
+    assert sum(q["home"] for q in post["quarters"]) == post["score"]["home"] == post["final"]["home"]

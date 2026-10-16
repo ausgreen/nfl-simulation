@@ -71,6 +71,29 @@ def sig_id(s: dict) -> str:
 OVERTIME_NOTE = "Overtime isn't simulated, so there are no chances to show until the game ends."
 
 
+def quarter_rows(s: dict, clock: float, qpts: np.ndarray | None) -> list[dict]:
+    """Points scored in each regulation quarter (home, away): the actual points for quarters that are over (ESPN's
+    line scores), else the points so far plus the simulated rest (`qpts`: (n, 4, 2)), with who wins the quarter."""
+    ls = s.get("linescores") or [[], []]
+
+    def actual(t, i):
+        return ls[t][i] if i < len(ls[t]) else 0.0
+    cur = {"pre": 0, "post": 5}.get(s["status"], min(4, int((3600 - clock) // 900) + 1))
+    rows = []
+    for i in range(4):
+        if i + 1 < cur or qpts is None:
+            h, a = actual(0, i), actual(1, i)
+            rows.append({"q": i + 1, "state": "done", "home": h, "away": a, "homeWin": None, "awayWin": None,
+                         "tie": None})
+            continue
+        so_far = (actual(0, i), actual(1, i)) if i + 1 == cur else (0.0, 0.0)
+        h, a = so_far[0] + qpts[:, i, 0], so_far[1] + qpts[:, i, 1]
+        rows.append({"q": i + 1, "state": "live" if i + 1 == cur else "next", "home": float(h.mean()),
+                     "away": float(a.mean()), "homeWin": float(np.mean(h > a)), "awayWin": float(np.mean(a > h)),
+                     "tie": float(np.mean(h == a))})
+    return rows
+
+
 def clock_text(clock: float, s: dict | None = None) -> str:
     if s and s.get("overtime") and s["status"] == "in":
         return "End of regulation" if s["period"] == 4 else f"OT {s['display_clock'] or ''}".strip()
@@ -200,7 +223,7 @@ class LiveModel:
             row[f"form_mean{k}"], row[f"form_sd{k}"] = float(np.ravel(fm)[0]), float(np.ravel(fs)[0])
         frame = pd.DataFrame([row])
         nxt = E.simulate(su.tb, frame, N_NEXT, seed=1, max_steps=1, record=True)
-        full_y, full_p = E.simulate(su.tb, frame, N_GAME, seed=2, points=True)
+        full_y, full_p, full_q = E.simulate(su.tb, frame, N_GAME, seed=2, points=True, quarters=True)
         drv = E.simulate(su.tb, frame, N_DRIVE, seed=3, drive=True)
         teams = (home, away)
 
@@ -248,6 +271,9 @@ class LiveModel:
                        "p90": float(np.percentile(fy, 90)),
                        "lines": [{"line": L, "p": float(np.mean(fy >= L))} for L in LINES]})
         final_margin = st["margin"] + full_p[0, :, 0] - full_p[0, :, 1]
+        home_win = float(np.mean(final_margin > 0) + 0.5 * np.mean(final_margin == 0))
+        final = {"home": float(s["home_score"] + full_p[0, :, 0].mean()),
+                 "away": float(s["away_score"] + full_p[0, :, 1].mean()), "homeWin": home_win, "awayWin": 1 - home_win}
         off, de = teams[int(st["pos"])], teams[1 - int(st["pos"])]
         # how the current drive ends, grouped by result
         p = int(st["pos"])
@@ -274,7 +300,8 @@ class LiveModel:
                 "margin": st["margin"], "now": now, "ball": ball, "lastPlay": s["last_play"], "feedTime": s["feed_time"],
                 "fetchedAt": s["fetched_at"], "overrides": applied, "overtime": False, "next": top, "drive": drive,
                 "mix": [{"event": e, "prob": float(p)} for e, p in mix.head(6).items()],
-                "qbs": qb, "homeWin": float(np.mean(final_margin > 0) + 0.5 * np.mean(final_margin == 0)),
+                "qbs": qb, "homeWin": home_win, "final": final,
+                "quarters": quarter_rows(s, st["clock"], None if s["status"] == "post" else full_q[0]),
                 "line": {"spread": _f(an.get("spread")), "total": _f(an.get("total"))},
                 "raw": {k2: (_f(v) if isinstance(v, (float, np.floating)) else (bool(v) if isinstance(v, (bool, np.bool_)) else v))
                         for k2, v in st.items()}}
@@ -302,7 +329,8 @@ class LiveModel:
                 "score": {"home": s["home_score"], "away": s["away_score"]}, "margin": st["margin"], "now": now,
                 "ball": ball, "lastPlay": s["last_play"], "feedTime": s["feed_time"], "fetchedAt": s["fetched_at"],
                 "overrides": applied, "overtime": True, "note": OVERTIME_NOTE, "next": [], "drive": None, "mix": [],
-                "qbs": qb, "homeWin": None, "line": {"spread": _f(an.get("spread")), "total": _f(an.get("total"))},
+                "qbs": qb, "homeWin": None, "final": None,
+                "quarters": quarter_rows(s, st["clock"], None), "line": {"spread": _f(an.get("spread")), "total": _f(an.get("total"))},
                 "raw": {k: (_f(v) if isinstance(v, (float, np.floating)) else (bool(v) if isinstance(v, (bool, np.bool_)) else v))
                         for k, v in st.items()}}
 

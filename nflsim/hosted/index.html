@@ -56,6 +56,13 @@ td.r, th.r { text-align: right; }
 .bar { position: relative; height: 8px; background: var(--bar-2); border-radius: 4px; min-width: 60px; }
 .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--bar); border-radius: 4px; }
 .mix { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.final { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; }
+.final .lbl { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); font-weight: 600; }
+.final .sc { font: 700 24px var(--mono); }
+.quarters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 12px; padding-top: 10px;
+  border-top: 1px solid var(--rule-2); font-size: 12.5px; color: var(--ink-3); }
+@media (max-width: 620px) { .quarters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.quarters b { color: var(--ink-2); font-weight: 600; }
 .qbs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 14px; }
 .qb h3 { margin: 0; font-size: 16px; }
 .qb .sub { color: var(--ink-2); margin: 2px 0 8px; }
@@ -80,6 +87,8 @@ footer { color: var(--ink-3); font-size: 12.5px; }
   <div class="stale" id="stale" role="status" hidden></div>
 
   <section class="panel" id="head" aria-live="polite"><span class="muted">Pick a game.</span></section>
+
+  <section class="panel" id="proj" hidden></section>
 
   <div class="grid2">
     <section class="panel">
@@ -159,14 +168,34 @@ footer { color: var(--ink-3); font-size: 12.5px; }
       : err ? "This game's latest update failed; showing the last good numbers." : "";
   }
 
+  function renderProj(d) {
+    const el = $("proj"), f = d.final, qs = d.quarters || [];
+    el.hidden = !f && !qs.length;
+    if (el.hidden) return;
+    const pts = (v, done) => done ? String(Math.round(v)) : v.toFixed(1);
+    const fav = f && (f.homeWin >= 0.5 ? [d.home, f.homeWin] : [d.away, f.awayWin]);
+    const head = !f ? "" : `<div class="final"><span class="lbl">${d.status === "post" ? "Final" : "Projected final"}</span>
+        <span class="sc">${esc(d.away)} ${Math.round(f.away)} – ${esc(d.home)} ${Math.round(f.home)}</span>
+        ${d.status === "post" ? "" : `<span class="badge">${esc(fav[0])} win ${pct(fav[1])}</span>`}</div>`;
+    const cell = (q) => {
+      const done = q.state === "done";
+      const tag = done ? "final" : q.state === "live" ? "now" : "expected";
+      const odds = done ? (q.home === q.away ? "tied" : `${esc(q.home > q.away ? d.home : d.away)} won the quarter`)
+        : `wins quarter: ${esc(d.away)} ${pct(q.awayWin)} · ${esc(d.home)} ${pct(q.homeWin)} · tie ${pct(q.tie)}`;
+      return `<div><b>Q${q.q}</b> ${tag}<br><span class="num">${esc(d.away)} ${pts(q.away, done)} – ${esc(d.home)} ${pts(q.home, done)}</span><br>${odds}</div>`;
+    };
+    el.innerHTML = head + (qs.length ? `<div class="quarters">${qs.map(cell).join("")}</div>` : "");
+  }
+
   function render(d) {
+    renderProj(d);
     const side = (t, sc) => `<span${d.ball && d.ball.team === t ? ` class="has" title="${esc(t)} has the ball"` : ""}>${esc(t)} ${sc}</span>`;
     const holder = (b) => b ? `${b.team} ${b.kick ? "receives" : "ball"}` : "";
     const age = d.feedTime ? Math.round((Date.now() - Date.parse(d.feedTime)) / 1000) : null;
     const spread = d.line.spread == null ? "" : `line ${d.home} ${d.line.spread > 0 ? "−" + d.line.spread : "+" + Math.abs(d.line.spread)} · total ${d.line.total}`;
     $("head").innerHTML = `<div class="score"><span class="teams">${side(d.away, d.score.away)} – ${side(d.home, d.score.home)}</span>
         <span class="meta">${esc(d.detail)}</span><span class="meta">${esc(spread)}</span>
-        ${d.homeWin == null ? "" : `<span class="badge">${esc(d.home)} win ${pct(d.homeWin)}</span>`}</div>
+</div>
       <div class="now">${d.ball ? `<span class="pill">${esc(d.ball.team)} ${d.ball.kick ? "receives" : "ball"}</span> ${esc(d.ball.kick ? "Kickoff next" : d.ball.situation)}` : esc(d.now)}</div>
       <div class="muted">Last play: ${esc(d.lastPlay || "—")}${age != null ? ` · last play ${ago(age)} ago` : ""}</div>`;
     if (d.overtime) {  // the simulator ends with regulation: situation and yards only

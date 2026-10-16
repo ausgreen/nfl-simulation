@@ -68,12 +68,22 @@ def _yards_to_goal(text: str | None, offense: str) -> float | None:
 
 def game_state(event: str, sb: dict | None = None, sm: dict | None = None) -> dict:
     """Current situation for one game. Keys: home, away, season, week, clock (game seconds left, regulation),
-    period, display_clock, margin (home - away), pos (0 home / 1 away), kick, yl (yards to the goal), down, togo,
+    period, display_clock, margin (home - away), linescores ([home, away] points per period), pos (0 home / 1 away), kick, yl (yards to the goal), down, togo,
     passers {team: [(name, espn_id, att, yds)]}, last_play, feed_time (wall clock of the last play), status,
     h2_receiver (0/1), overtime (in overtime, or regulation ended tied; the simulator stops at the end of
     regulation, so the live app shows the situation without simulating; pos is None before the overtime
     kickoff if ESPN hasn't posted the receiver). `sb`/`sm`: an already-fetched scoreboard / summary (fetched here otherwise)."""
     return add_summary(situation(event, sb), sm)
+
+
+def _linescores(team: dict) -> list[float]:
+    """Points per period (1-4 regulation, 5+ overtime) from a scoreboard competitor; periods not started are left out."""
+    out = []
+    for x in team.get("linescores") or []:
+        i = int(x.get("period") or len(out) + 1) - 1
+        out += [0.0] * (i + 1 - len(out))
+        out[i] = float(x.get("value") or 0)
+    return out
 
 
 def situation(event: str, sb: dict | None = None) -> dict:
@@ -98,7 +108,8 @@ def situation(event: str, sb: dict | None = None) -> dict:
          "display_clock": st.get("displayClock"), "status": st["type"]["state"], "detail": st["type"]["shortDetail"],
          "margin": margin, "home_score": int(t["home"].get("score") or 0),
          "away_score": int(t["away"].get("score") or 0), "last_play": (last.get("text") or "").strip(),
-         "timeouts": [sit.get("homeTimeouts"), sit.get("awayTimeouts")]}
+         "timeouts": [sit.get("homeTimeouts"), sit.get("awayTimeouts")],
+         "linescores": [_linescores(t[k]) for k in ("home", "away")]}
     pos_id = sit.get("possession")
     down = sit.get("down")
     kind = (last.get("type") or {}).get("text") or ""

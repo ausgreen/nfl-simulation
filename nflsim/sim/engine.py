@@ -36,13 +36,15 @@ DRIVE_RESULTS = ["defensive touchdown", "safety", "touchdown", "field goal", "mi
 
 
 def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps: int = 400,
-             points: bool = False, record: bool = False, drive: bool = False):
+             points: bool = False, record: bool = False, drive: bool = False, quarters: bool = False):
     """Final passing yards of both starters: array (rows, n, 2); with points=True also each team's points
     scored from the start state on (rows, n, 2). With record=True (use a small max_steps), returns a dict of the
     state after the last step instead: yds, pts, pos, yl, down, togo, clock, margin, kick, done, event (code into
     EVENTS, -1 if no snap), gain, on_downs; each shaped (rows, n[, 2]). With drive=True, each game stops when the
     drive in progress ends (the receiving team's drive if a kickoff is pending) and the result is a dict: result
-    (code into DRIVE_RESULTS, -1 if no snap), plays, used (seconds), pts, yds, margin, clock."""
+    (code into DRIVE_RESULTS, -1 if no snap), plays, used (seconds), pts, yds, margin, clock. With points=True and
+    quarters=True, also the points each team scored in each regulation quarter (rows, n, 4, 2), credited to the
+    quarter in which the scoring snap started."""
     rng = np.random.default_rng(seed)
     r = len(start)
     rid = np.repeat(np.arange(r), n)
@@ -61,6 +63,7 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
     h2 = rep("h2_receiver", np.int8)
     yds = np.stack([rep("yds0", float), rep("yds1", float)], 1)
     pts = np.zeros((r * n, 2))
+    qpts = np.zeros((r * n, 4, 2)) if quarters else None
     out = np.stack([rep("out0", bool), rep("out1", bool)], 1)
     mult = np.stack([rep("mult0", float), rep("mult1", float)], 1)
     tp = {c: team(c) for c in TEAM_COLS}
@@ -75,6 +78,10 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
         margin += xp
         pts[:, 0] += xp > 0
         pts[:, 1] += xp < 0
+        if quarters:
+            q0 = np.clip((3600 - clock) // 900, 0, 3).astype(int)
+            qpts[np.arange(r * n), q0, 0] += xp > 0
+            qpts[np.arange(r * n), q0, 1] += xp < 0
     # missing situation fields (e.g. a kick pending) get safe defaults
     yl = np.where(np.isnan(yl), 75, yl)
     togo = np.where(np.isnan(togo), 10, togo)
@@ -198,6 +205,10 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
         margin[a] += (off_pts - def_pts) * sign
         pts[a, p] += off_pts
         pts[a, 1 - p] += def_pts
+        if quarters:
+            q = np.clip((3600 - ck) // 900, 0, 3).astype(int)
+            qpts[a, q, p] += off_pts
+            qpts[a, q, 1 - p] += def_pts
 
         # possession, field position, down and distance
         np_ = p.copy()
@@ -255,6 +266,8 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
                 "yl": yl.reshape(sh), "down": down.reshape(sh), "togo": togo.reshape(sh), "clock": clock.reshape(sh),
                 "margin": margin.reshape(sh), "kick": kick.reshape(sh), "done": done.reshape(sh),
                 "event": event.reshape(sh), "gain": last_gain.reshape(sh), "on_downs": last_downs.reshape(sh)}
+    if points and quarters:
+        return yds.reshape(r, n, 2), pts.reshape(r, n, 2), qpts.reshape(r, n, 4, 2)
     if points:
         return yds.reshape(r, n, 2), pts.reshape(r, n, 2)
     return yds.reshape(r, n, 2)
