@@ -80,4 +80,10 @@ def game_states(g: pd.DataFrame, starter0, starter1) -> pd.DataFrame:
     st["halftime"] = st.halftime.fillna(False).astype(bool)
     st["ts"] = pd.to_datetime(g.time_of_day, utc=True, errors="coerce").ffill().bfill().to_numpy()[st.row]
     st["game_secs_row"] = g.game_seconds_remaining.to_numpy()[st.row]
+    # each team's timeouts left (as of the row; 3 where play-by-play doesn't say)
+    tpos, tdef = g.posteam_timeouts_remaining, g.defteam_timeouts_remaining
+    to_home = pd.Series(np.where(team == 0, tpos, np.where(team == 1, tdef, np.nan))).ffill().fillna(3)
+    to_away = pd.Series(np.where(team == 1, tpos, np.where(team == 0, tdef, np.nan))).ffill().fillna(3)
+    st["to0"], st["to1"] = to_home.to_numpy()[st.row], to_away.to_numpy()[st.row]
+    st.loc[st.halftime, ["to0", "to1"]] = 3.0
     return st

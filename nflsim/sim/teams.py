@@ -11,7 +11,8 @@
 3. Uncertainty. A simulation that knows each team's exact strength is overconfident. Each simulated game draws the
    QB's form (log scale of completion gains) and a team efficiency shock; their spreads are what real games vary
    beyond the simulator's own randomness, estimated on the training seasons. In-game, the QB's form is updated from
-   his yards so far (normal approximation on the log scale).
+   his yards so far (normal approximation on the log scale), treating them as OBS_SCALE times noisier than the
+   simulator's own variance says (2023-25 in-game backtest, below).
 """
 
 from __future__ import annotations
@@ -24,6 +25,10 @@ from . import engine as E, tables as T
 HALF_LIFE = 8.0      # games
 SEASON_CARRY = 0.5   # weight kept from earlier seasons at each new season
 SMOOTH = 20.0        # yards added to both sides of log ratios
+# Noise multiplier for the in-game form update. In a backtest of 2023-25 starters (816 games, checkpoints from the end
+# of Q1 to 7:30 left), 4 scored line chances (100-350 yds) slightly better than 1, the simulator's own variance
+# (Brier 0.158 vs 0.160 at halftime), and about as well as no update, while still reacting to extreme games.
+OBS_SCALE = 4.0
 # metric: (pseudo-plays K, logit scale?)
 METRICS = {"pass": (400, True), "sack": (400, True), "int": (800, True), "comp": (400, True), "run": (300, False),
            "pace": (300, False)}
@@ -33,20 +38,22 @@ def play_residuals(tb: T.Tables, s: pd.DataFrame) -> pd.DataFrame:
     """Per-play (obs - expected) for each metric; NaN where a play doesn't count for it. `s` from tables.prepare."""
     out = pd.DataFrame({"game_id": s.game_id, "season": s.season, "week": s.week, "off": s.posteam,
                         "def": s.defteam})
-    pc = tb.call.probs[tb.call.cell(d=s.d, t=s.t, z=s.z, c=s.c, s=s.s)]
+    pc = tb.call.probs[tb.call.cell(d=s.d, t=s.t, z=s.z, zc=s.zc, c=s.c, s=s.s)]
     pr = s.call.isin(["pass", "run"]).to_numpy()
     out["pass"] = np.where(pr, (s.call == "pass") - pc[:, 0] / (pc[:, 0] + pc[:, 1]), np.nan)
-    q = tb.pass_out.probs[tb.pass_out.cell(d=s.d, t=s.t, z=s.z, c=s.c)]
+    q = tb.pass_out.probs[tb.pass_out.cell(d=s.d, t=s.t, z=s.z, c=s.c, s=s.s)]
     ps = (s.call == "pass").to_numpy()
     po = s.pass_out.to_numpy()
-    out["sack"] = np.where(ps, (po == "sack") - q[:, 2], np.nan)
+    out["sack"] = np.where(ps, np.isin(po, ["sack", "sack_fum"]) - q[:, 2] - q[:, 6], np.nan)
     out["int"] = np.where(ps, np.isin(po, ["int", "int_td"]) - q[:, 3] - q[:, 4], np.nan)
     ci = ps & np.isin(po, ["comp", "inc", "comp_fum"])
     out["comp"] = np.where(ci, np.isin(po, ["comp", "comp_fum"]) - (q[:, 0] + q[:, 5]) / (q[:, 0] + q[:, 1] + q[:, 5]),
                            np.nan)
-    rm = tb.run_gain.means()[tb.run_gain.cell(t=s.t, z=s.z)]
+    rm = tb.run_gain.means()[tb.run_gain.cell(t=s.t, z=s.z, zg=s.zg)]
+    if tb.run_shift is not None:
+        rm = rm + tb.run_shift[T.script_cell(s.c, s.s)]
     out["run"] = np.where(s.call == "run", s.gain - rm, np.nan)
-    em = tb.elapsed.means()[tb.elapsed.cell(cat=s.cat, c=s.c, s3=s.s3)]
+    em = tb.elapsed.means()[tb.elapsed.cell(cat=s.cat, tox=s.tox, c=s.c, s3=s.s3)]
     normal = s.c.isin([0, 2]).to_numpy() & np.isin(s.cat, [0, 1, 2]) & s.has_next.to_numpy()
     out["pace"] = np.where(normal, s.elapsed - em, np.nan)
     return out
@@ -57,7 +64,7 @@ def league_rates(tb: T.Tables, s: pd.DataFrame) -> dict:
     po = s.pass_out[s.call == "pass"]
     pr = s.call[s.call.isin(["pass", "run"])]
     ci = po[po.isin(["comp", "inc", "comp_fum"])]
-    return {"pass": (pr == "pass").mean(), "sack": (po == "sack").mean(), "int": po.isin(["int", "int_td"]).mean(),
+    return {"pass": (pr == "pass").mean(), "sack": po.isin(["sack", "sack_fum"]).mean(), "int": po.isin(["int", "int_td"]).mean(),
             "comp": ci.isin(["comp", "comp_fum"]).mean()}
 
 
@@ -212,7 +219,7 @@ def form_posterior(yds, clock, mu, noise: dict):
     g = np.clip(1 - np.asarray(clock, float) / 3600.0, 0.0, 1.0)
     z = np.log((np.asarray(yds, float) + SMOOTH) / (np.asarray(mu, float) * g + SMOOTH))
     prior = max(noise["form_sd"] ** 2, 1e-6)
-    obs = noise["tau2"] / np.maximum(g, 0.05)
+    obs = OBS_SCALE * noise["tau2"] / np.maximum(g, 0.05)
     prec = 1 / prior + np.where(g > 0, 1 / obs, 0.0)
     mean = np.where(g > 0, z / obs, 0.0) / prec
     return mean, np.sqrt(1 / prec)

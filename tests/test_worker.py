@@ -143,7 +143,7 @@ def test_a_new_play_is_simulated_once_and_again_when_the_box_score_catches_up(tm
     assert json.loads((tmp_path / "site" / "status.json").read_text())["live"] == 1
 
 
-def test_overtime_shows_the_situation_without_chances(tmp_path, model, replay):
+def test_overtime_is_simulated(tmp_path, model, replay):
     sb = _snapshot()[SCOREBOARD]["body"]
     ot = _in_game(sb, PRE, period=5, clock=480, down=2, togo=5, spot=40, text="Run for 3 yards.",
                   home_score=34, away_score=34)
@@ -155,8 +155,9 @@ def test_overtime_shows_the_situation_without_chances(tmp_path, model, replay):
     assert w.tick() == 1
     state = json.loads((tmp_path / "site" / "state" / f"{PRE}.json").read_text())
     assert state["overtime"] and state["clock"] == "OT 8:00" and state["now"] == "LA ball · 2nd & 5 at LA 40"
-    assert state["homeWin"] is None and state["next"] == [] and state["drive"] is None
-    assert all(q["median"] is None and q["lines"] == [] for q in state["qbs"])
+    assert 0 < state["homeWin"] < 1 and state["next"] and state["drive"]["outcomes"]
+    assert all(q["median"] >= q["yds"] and q["lines"] for q in state["qbs"])
+    assert all(q["state"] == "done" for q in state["quarters"])
 
 
 def test_pregame_states_refresh_hourly(tmp_path, model, replay):

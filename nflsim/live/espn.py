@@ -70,9 +70,8 @@ def game_state(event: str, sb: dict | None = None, sm: dict | None = None) -> di
     """Current situation for one game. Keys: home, away, season, week, clock (game seconds left, regulation),
     period, display_clock, margin (home - away), linescores ([home, away] points per period), pos (0 home / 1 away), kick, yl (yards to the goal), down, togo,
     passers {team: [(name, espn_id, att, yds)]}, last_play, feed_time (wall clock of the last play), status,
-    h2_receiver (0/1), overtime (in overtime, or regulation ended tied; the simulator stops at the end of
-    regulation, so the live app shows the situation without simulating; pos is None before the overtime
-    kickoff if ESPN hasn't posted the receiver). `sb`/`sm`: an already-fetched scoreboard / summary (fetched here otherwise)."""
+    h2_receiver (0/1), overtime (in overtime, or regulation ended tied; pos is None before the overtime kickoff if
+    ESPN hasn't posted the receiver), ot_clock (seconds left in the overtime period, else None), postseason. `sb`/`sm`: an already-fetched scoreboard / summary (fetched here otherwise)."""
     return add_summary(situation(event, sb), sm)
 
 
@@ -105,6 +104,7 @@ def situation(event: str, sb: dict | None = None) -> dict:
     last = sit.get("lastPlay") or {}
     s = {"event": str(event), "home": home, "away": away, "season": int(sb["season"]["year"]),
          "week": int(sb["week"]["number"]), "clock": clock, "period": period,
+         "ot_clock": qclock if period > 4 else None, "postseason": (sb.get("season") or {}).get("type") == 3,
          "display_clock": st.get("displayClock"), "status": st["type"]["state"], "detail": st["type"]["shortDetail"],
          "margin": margin, "home_score": int(t["home"].get("score") or 0),
          "away_score": int(t["away"].get("score") or 0), "last_play": (last.get("text") or "").strip(),

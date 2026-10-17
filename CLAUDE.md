@@ -62,9 +62,13 @@ calibration) -> vectorized simulation from any game state -> CLI replay or live 
   `index.html`: the live page, reading the JSON by relative URL, with a stale-data banner.
   No viewer input reaches the worker.
 
-Not modeled: penalties, explicit timeouts (only inside clock-used samples), onside kicks, overtime. The simulator is
-overconfident in the 4th quarter. From a tied end of regulation (`state["overtime"]`) the live app shows the situation
-and passing yards without simulating (no chances, `homeWin` null).
+Modeled since 2026-10-16: accepted penalties that wipe out the play, timeouts, two-minute warnings, overtime (NFL rules
+since 2025; the live app infers whose OT possession it is from the score), strip-sack and return fumbles, return TDs,
+two-point tries and onside kicks (decisions learned by score and clock), score effects on pass results and gains.
+4th-down calls are a logistic regression (`tables.fourth_down_calls`); other calls a product of smoothed tables.
+Not modeled: penalties on plays that stand. The final score includes overtime; the
+quarter projections are regulation only. Regulation ends tied less often than real games do (3.6% vs 6.2%). Win
+chances are still somewhat overconfident in the 4th quarter (2025: 11 upsets where the model expected 4).
 
 ## Caches (`data/live/`, gitignored except `wf_rows.parquet`)
 

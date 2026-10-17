@@ -4,7 +4,8 @@ after the next snap, from the team game simulator (nflsim/sim/), plus each start
     uv run nflsim live serve            # http://localhost:8765
 
 Also the most likely ways the drive in progress ends (the receiving team's drive if a kickoff is next).
-Overtime is not simulated: from the end of a tied regulation the page shows the situation and passing yards only.
+Overtime is simulated (sim/engine.py); in overtime, whether each team has had its possession is inferred from the
+score (a team ahead has had it), so a tied overtime is treated as if neither had.
 
 Stdlib HTTP server, local only. Endpoints: / (page), /api/games, /api/state?event=<id>[&overrides], /api/sig?event=<id>
 (the game's play and box-score signature, no simulation; the page re-requests the state when it changes).
@@ -66,9 +67,6 @@ def sig_id(s: dict) -> str:
     """Short id of a game_state()'s signature and box score: it changes with every play, and when the box score
     catches up with one."""
     return hashlib.sha1(repr((espn.signature(s), espn.box(s))).encode()).hexdigest()[:12]
-
-
-OVERTIME_NOTE = "Overtime isn't simulated, so there are no chances to show until the game ends."
 
 
 def quarter_rows(s: dict, clock: float, qpts: np.ndarray | None) -> list[dict]:
@@ -194,8 +192,10 @@ class LiveModel:
         home, away = s["home"], s["away"]
         y0, out0, n0 = self._starter_yards(s["passers"].get(home, []), qbs[home][0])
         y1, out1, n1 = self._starter_yards(s["passers"].get(away, []), qbs[away][0])
+        to = [3.0 if v is None else float(v) for v in (s.get("timeouts") or [None, None])]
         st = {"clock": s["clock"], "margin": s["margin"], "pos": s["pos"], "kick": s["kick"], "yl": s["yl"],
-              "down": s["down"], "togo": s["togo"], "yds0": y0, "yds1": y1, "out0": out0, "out1": out1}
+              "down": s["down"], "togo": s["togo"], "yds0": y0, "yds1": y1, "out0": out0, "out1": out1,
+              "to0": to[0], "to1": to[1]}
         applied = {}
         for k, v in ov.items():
             if v in (None, ""):
@@ -213,13 +213,21 @@ class LiveModel:
             applied[k] = v
         if "kick" in applied and not st["kick"] and (st["yl"] is None or np.isnan(st["yl"])):
             st["yl"] = 75.0
-        if s.get("overtime") and s["status"] == "in":
-            return self._overtime(s, st, an, ((n0, y0, out0), (n1, y1, out1)), applied)
+        ot = bool(s.get("overtime")) and s["status"] == "in"
+        extra = {}
+        if ot:
+            post = bool(s.get("postseason"))
+            if "clock" not in applied:  # seconds left in the overtime period (a tied regulation's end: all of it)
+                st["clock"] = (900.0 if post else 600.0) if s["period"] == 4 else float(s.get("ot_clock") or 0.0)
+            if st["pos"] is None:  # receiver not known yet: a coin toss in each simulated game
+                st.update(pos=-1, kick=True)
+            lead = 0 if st["margin"] > 0 else (1 if st["margin"] < 0 else None)
+            extra = {"ot": True, "post": post, "ot_poss0": lead == 0, "ot_poss1": lead == 1}
         h2 = s["h2_receiver"]
         cols = [f"{c}{k}" for c in list(TM.METRICS) + ["delta", "mult"] for k in (0, 1)] + ["delta_sd"]
-        row = {**st, "h2_receiver": h2, "pat": 0, **{c: float(an[c]) for c in cols}}
+        row = {**st, **extra, "h2_receiver": h2, "pat": 0, **{c: float(an[c]) for c in cols}}
         for k, mu in ((0, an.mu0), (1, an.mu1)):
-            fm, fs = TM.form_posterior([row[f"yds{k}"]], row["clock"], [mu], su.noise)
+            fm, fs = TM.form_posterior([row[f"yds{k}"]], 0.0 if ot else row["clock"], [mu], su.noise)
             row[f"form_mean{k}"], row[f"form_sd{k}"] = float(np.ravel(fm)[0]), float(np.ravel(fs)[0])
         frame = pd.DataFrame([row])
         nxt = E.simulate(su.tb, frame, N_NEXT, seed=1, max_steps=1, record=True)
@@ -274,9 +282,10 @@ class LiveModel:
         home_win = float(np.mean(final_margin > 0) + 0.5 * np.mean(final_margin == 0))
         final = {"home": float(s["home_score"] + full_p[0, :, 0].mean()),
                  "away": float(s["away_score"] + full_p[0, :, 1].mean()), "homeWin": home_win, "awayWin": 1 - home_win}
-        off, de = teams[int(st["pos"])], teams[1 - int(st["pos"])]
-        # how the current drive ends, grouped by result
-        p = int(st["pos"])
+        toss = st["pos"] < 0
+        off, de = (None, None) if toss else (teams[int(st["pos"])], teams[1 - int(st["pos"])])
+        # how the current drive ends, grouped by result (the receiving team's: before a coin toss, either team's)
+        p = max(int(st["pos"]), 0)
         d = pd.DataFrame({"result": drv["result"][0], "plays": drv["plays"][0], "used": drv["used"][0],
                           "margin": drv["margin"][0], "net": drv["pts"][0, :, p] - drv["pts"][0, :, 1 - p]})
         d = d[d.result >= 0]
@@ -293,46 +302,20 @@ class LiveModel:
             f"{ordinal(st['down'])} & {'Goal' if st['togo'] >= st['yl'] else int(st['togo'])} at {field(st['yl'], off, de)}"
         now = f"Kickoff · {off} receives" if st["kick"] else f"{off} ball · {situation}"
         ball = {"team": off, "kick": bool(st["kick"]), "situation": situation}
+        if toss:
+            now, ball = "Overtime kickoff · coin toss next", None
         if s["status"] == "post":
             now, ball = "Final", None
         return {"event": event, "sig": sig_id(s), "home": home, "away": away, "status": s["status"], "detail": s["detail"],
-                "clock": clock_text(st["clock"]), "score": {"home": s["home_score"], "away": s["away_score"]},
+                "clock": clock_text(st["clock"], s), "score": {"home": s["home_score"], "away": s["away_score"]},
                 "margin": st["margin"], "now": now, "ball": ball, "lastPlay": s["last_play"], "feedTime": s["feed_time"],
-                "fetchedAt": s["fetched_at"], "overrides": applied, "overtime": False, "next": top, "drive": drive,
+                "fetchedAt": s["fetched_at"], "overrides": applied, "overtime": ot, "next": top, "drive": drive,
                 "mix": [{"event": e, "prob": float(p)} for e, p in mix.head(6).items()],
                 "qbs": qb, "homeWin": home_win, "final": final,
-                "quarters": quarter_rows(s, st["clock"], None if s["status"] == "post" else full_q[0]),
+                "quarters": quarter_rows(s, st["clock"], None if s["status"] == "post" or ot else full_q[0]),
                 "line": {"spread": _f(an.get("spread")), "total": _f(an.get("total"))},
                 "raw": {k2: (_f(v) if isinstance(v, (float, np.floating)) else (bool(v) if isinstance(v, (bool, np.bool_)) else v))
                         for k2, v in st.items()}}
-
-    @staticmethod
-    def _overtime(s: dict, st: dict, an: pd.Series, starters, applied: dict) -> dict:
-        """compute_state's output in overtime (or a tied regulation's end): the situation and passing yards, no
-        chances (the simulator ends at 0:00 of the 4th quarter)."""
-        home, away = s["home"], s["away"]
-        teams = (home, away)
-        if s["period"] == 4:
-            now, ball = "End of regulation · overtime next", None
-        elif st["pos"] is None:
-            now, ball = "Overtime kickoff", None
-        else:
-            off, de = teams[int(st["pos"])], teams[1 - int(st["pos"])]
-            situation = "kickoff" if st["kick"] else \
-                f"{ordinal(st['down'])} & {'Goal' if st['togo'] >= st['yl'] else int(st['togo'])} at {field(st['yl'], off, de)}"
-            now = f"Kickoff · {off} receives" if st["kick"] else f"{off} ball · {situation}"
-            ball = {"team": off, "kick": bool(st["kick"]), "situation": situation}
-        qb = [{"team": teams[t], "qb": name, "yds": y, "out": out, "mu": float(an[f"mu{t}"]), "median": None,
-               "p10": None, "p90": None, "lines": []} for t, (name, y, out) in ((1, starters[1]), (0, starters[0]))]
-        return {"event": s["event"], "sig": sig_id(s), "home": home, "away": away, "status": s["status"],
-                "detail": s["detail"], "clock": clock_text(st["clock"], s),
-                "score": {"home": s["home_score"], "away": s["away_score"]}, "margin": st["margin"], "now": now,
-                "ball": ball, "lastPlay": s["last_play"], "feedTime": s["feed_time"], "fetchedAt": s["fetched_at"],
-                "overrides": applied, "overtime": True, "note": OVERTIME_NOTE, "next": [], "drive": None, "mix": [],
-                "qbs": qb, "homeWin": None, "final": None,
-                "quarters": quarter_rows(s, st["clock"], None), "line": {"spread": _f(an.get("spread")), "total": _f(an.get("total"))},
-                "raw": {k: (_f(v) if isinstance(v, (float, np.floating)) else (bool(v) if isinstance(v, (bool, np.bool_)) else v))
-                        for k, v in st.items()}}
 
 
 def _f(v):
