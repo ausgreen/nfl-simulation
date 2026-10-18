@@ -7,9 +7,11 @@ Also the most likely ways the drive in progress ends (the receiving team's drive
 Overtime is simulated (sim/engine.py); in overtime, whether each team has had its possession is inferred from the
 score (a team ahead has had it), so a tied overtime is treated as if neither had.
 
-Stdlib HTTP server, local only. Endpoints: / (page), /api/games, /api/state?event=<id>[&overrides], /api/sig?event=<id>
+Stdlib HTTP server, local only. Endpoints: / (every game at a glance, `hosted/index.html`), /game?event=<id>
+(one game's page), /edges (model vs Kalshi, `hosted/edges.html`), /api/games, /api/state?event=<id>[&overrides], /api/sig?event=<id>
 (the game's play and box-score signature, no simulation; the page re-requests the state when it changes),
-/api/kalshi (Kalshi's passing-yard prices for this week's games, kalshi.live_prices; re-fetched after 30 s).
+/api/summary (the home page's cards: `summary` of each game's state), /api/kalshi (Kalshi's passing-yard prices for
+this week's games, kalshi.live_prices; re-fetched after 30 s).
 Overrides (any subset): pos=home|away, down, togo, yl (yards to the goal), clock (game seconds left), margin
 (home - away), kick=1 (a kickoff is next; pos = receiving team), yds_home, yds_away.
 """
@@ -34,6 +36,8 @@ from ..sim import engine as E, pregame as PG, teams as TM
 from . import espn
 
 TEMPLATE = Path(__file__).with_name("live_template.html")
+HOME = Path(__file__).parent.parent / "hosted" / "index.html"  # every game at a glance
+EDGES = HOME.with_name("edges.html")  # the model vs Kalshi's passing-yard prices, largest gaps first
 LINES = list(range(100, 401, 25))  # the page shows 150-350, plus any other line Kalshi lists
 N_NEXT, N_DRIVE, N_GAME = 20000, 10000, 4000
 
@@ -321,6 +325,29 @@ class LiveModel:
                         for k2, v in st.items()}}
 
 
+CARD = ("event", "home", "away", "status", "clock", "score", "now", "ball", "lastPlay", "homeWin", "final", "line",
+        "overtime", "feedTime")
+
+
+def summary(out: dict | None, game: dict) -> dict:
+    """The home page's card for a game: the espn.games row, plus compute_state's headline numbers when there are any."""
+    card = dict(game)
+    if out:
+        card.update({k: out[k] for k in CARD})
+        card["qbs"] = [{k: q[k] for k in ("team", "qb", "yds", "out", "mu", "median", "p10", "p90", "lines")}
+                       for q in out["qbs"]]
+    return card
+
+
+def _local(page: Path) -> bytes:
+    """A hosted page (hosted/*.html) pointed at this server's endpoints and paths instead of the published files."""
+    html = page.read_text()
+    for published, here in (("summary.json", "/api/summary"), ("kalshi.json", "/api/kalshi"), ("game.html", "/game"),
+                            ("edges.html", "/edges"), ("./", "/")):
+        html = html.replace(f'"{published}"', f'"{here}"')
+    return html.encode()
+
+
 def _f(v):
     try:
         v = float(v)
@@ -348,6 +375,10 @@ def serve(port: int = 8765, ds: Dataset | None = None) -> None:
             q = {k: v[-1] for k, v in parse_qs(u.query).items()}
             try:
                 if u.path == "/":
+                    self._send(200, _local(HOME), "text/html; charset=utf-8")
+                elif u.path == "/edges":
+                    self._send(200, _local(EDGES), "text/html; charset=utf-8")
+                elif u.path == "/game":
                     self._send(200, TEMPLATE.read_bytes(), "text/html; charset=utf-8")
                 elif u.path == "/api/games":
                     self._send(200, espn.games())
@@ -356,6 +387,15 @@ def serve(port: int = 8765, ds: Dataset | None = None) -> None:
                     if not ev:
                         return self._send(400, {"error": "event required"})
                     self._send(200, model.compute(ev, q))
+                elif u.path == "/api/summary":
+                    cards = []
+                    for g in espn.games():
+                        try:
+                            cards.append(summary(model.compute(g["event"], {}), g))
+                        except Exception:  # the card without the model's numbers
+                            traceback.print_exc()
+                            cards.append(summary(None, g))
+                    self._send(200, cards)
                 elif u.path == "/api/kalshi":
                     if time.monotonic() - prices["at"] > 30:
                         prices.update(at=time.monotonic(), data=kalshi.live_prices(espn.games()))

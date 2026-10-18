@@ -1,7 +1,10 @@
 """Hosted worker: the only process that talks to ESPN or runs the simulator. Viewers read the files it publishes
 (docs/hosting-plan.md):
 
-    index.html          the page (no corrections)
+    index.html          every game at a glance, live games first (the home page)
+    game.html           one game (`?event=<id>`; no corrections)
+    edges.html          the model's passing-yard chances vs Kalshi's prices (summary.json + kalshi.json)
+    summary.json        its cards (live.app.summary of each game's last computed state)
     games.json          this week's games (espn.games)
     state/<event>.json  LiveModel.compute_state for the game, from ESPN's feed as is
     status.json         heartbeat: when the worker last checked, per-game errors
@@ -30,10 +33,12 @@ from pathlib import Path
 
 from ..data import Dataset
 from ..live import espn
-from ..live.app import LiveModel, _f
+from ..live.app import LiveModel, _f, summary
 from .publish import max_age
 
 PAGE = Path(__file__).with_name("index.html")
+GAME_PAGE = Path(__file__).with_name("game.html")
+EDGES_PAGE = Path(__file__).with_name("edges.html")
 
 
 def _iso(t: float) -> str:
@@ -48,6 +53,7 @@ class GameTrack:
     polled: float | None = None  # feed clock of the last summary fetch
     error: str | None = None
     failed: float | None = None  # feed clock of the last error
+    out: dict | None = None  # the last computed state
 
 
 @dataclass
@@ -92,6 +98,8 @@ class Worker:
     def start(self) -> None:
         """Publish the page and set up every game on the scoreboard, so the first update of a game is fast."""
         self.put("index.html", PAGE.read_bytes(), "text/html; charset=utf-8")
+        self.put("game.html", GAME_PAGE.read_bytes(), "text/html; charset=utf-8")
+        self.put("edges.html", EDGES_PAGE.read_bytes(), "text/html; charset=utf-8")
         sb = espn.scoreboard()
         for g in self._games(sb):
             try:
@@ -147,7 +155,7 @@ class Worker:
                 out = self.model.compute_state(s)
                 self.computations += 1
                 n += 1
-                t.sig, t.box, t.computed, t.error = sig, box, now, None
+                t.sig, t.box, t.computed, t.error, t.out = sig, box, now, None, out
                 wrote = self.put_json(f"state/{ev}.json", out)
                 self.log(f"{g['away']} @ {g['home']} {out['clock']}: {out['now']} "
                          f"({time.perf_counter() - started:.1f} s{'' if wrote else ', unchanged'})")
@@ -155,6 +163,7 @@ class Worker:
                 t.error, t.failed = f"{type(e).__name__}: {e}", now
                 self.log(f"{g['away']} @ {g['home']}: {t.error}")
                 traceback.print_exc()
+        self.put_json("summary.json", [summary(self.games[g["event"]].out, g) for g in games])
         if self.prices and (self.priced is None or time.monotonic() - self.priced >= self.prices_every):
             self.priced = time.monotonic()
             try:

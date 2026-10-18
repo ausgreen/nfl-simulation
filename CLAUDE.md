@@ -13,7 +13,7 @@ keeps its own copy of the model files, so changes here don't need to stay in syn
 
 ```sh
 uv sync                                  # install (Python >= 3.11, deps: numpy, pandas, pyarrow, scikit-learn)
-uv run nflsim live serve [--port 8765]   # live game companion, http://localhost:8765 (127.0.0.1 only)
+uv run nflsim live serve [--port 8765]   # live game companion, http://localhost:8765 (all games; /game?event=<id>) (127.0.0.1 only)
 uv run nflsim sim game 2026_05_TB_DAL    # replay one game: pregame sim, then simulated from every play
 uv run nflsim sim fetch [--since YEAR]   # refresh slim play-by-play -> data/nflverse/pbp_sim/
 uv run nflsim fetch [--since YEAR]       # refresh nflverse stats + schedules, then play-by-play
@@ -58,9 +58,11 @@ calibration) -> vectorized simulation from any game state -> CLI replay or live 
   re-simulates a game when `espn.signature` changes, or when its box score (`espn.box`, re-read every 10 s while
   the game is in progress) catches up with a play (pregame: hourly) and publishes `games.json`, `state/<event>.json`, `status.json` (heartbeat + per-game errors), `kalshi.json` (Kalshi's
   passing-yard prices, `kalshi.live_prices`, every 30 s; not in replays) and
-  `index.html`; unchanged bytes are not re-published; polls every 60 s between game windows, retries a failing game
+  the pages; unchanged bytes are not re-published; polls every 60 s between game windows, retries a failing game
   after 60 s. `publish.py`: `LocalDir` (atomic writes), `S3Compatible` (R2 via boto3, `hosted` extra) and cache times.
-  `index.html`: the live page, reading the JSON by relative URL, with a stale-data banner.
+  `index.html` (home page): every game at a glance, live first, from `summary.json` (`live.app.summary`);
+  `game.html?event=<id>`: one game; `edges.html`: the
+  model's passing-yard chances vs Kalshi's prices, largest gaps first. All read the JSON by relative URL and show a stale-data banner. Locally: `/`, `/game`, `/edges`.
   No viewer input reaches the worker.
 
 Modeled since 2026-10-16: accepted penalties that wipe out the play, timeouts, two-minute warnings, overtime (NFL rules

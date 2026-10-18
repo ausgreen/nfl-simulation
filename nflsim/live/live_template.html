@@ -26,7 +26,14 @@
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font); }
 .app { max-width: 1100px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; }
-header.top { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+header.site { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 20px; border-bottom: 1px solid var(--rule); }
+.brand { font-size: 18px; font-weight: 700; letter-spacing: .02em; padding-bottom: 8px; }
+.tabs { display: flex; gap: 2px; overflow-x: auto; }
+.tabs a { padding: 8px 12px; color: var(--ink-2); text-decoration: none; font-weight: 600; white-space: nowrap;
+  border-bottom: 3px solid transparent; margin-bottom: -1px; }
+.tabs a:hover { color: var(--ink); }
+.tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); }
+header.top { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 h1 { margin: 0; font-size: 20px; letter-spacing: .02em; }
 .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 select, input, button { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 8px; }
@@ -74,8 +81,11 @@ footer { color: var(--ink-3); font-size: 12.5px; }
 </head>
 <body>
 <div class="app">
+  <header class="site">
+    <span class="brand">Live Game Companion</span>
+    <nav class="tabs" aria-label="Pages"><a href="/">All games</a><a href="/game" aria-current="page">Game</a><a href="/edges">Model vs Kalshi</a></nav>
+  </header>
   <header class="top">
-    <h1>Live Game Companion</h1>
     <div class="controls">
       <select id="game" aria-label="Game"></select>
       <label class="muted"><input type="checkbox" id="auto" checked> update on each play</label>
@@ -124,7 +134,9 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     const r = await fetch("/api/games"); const g = await r.json();
     const saved = store.get("live:game");
     $("game").innerHTML = g.map((x) => `<option value="${x.event}">${esc(x.away)} @ ${esc(x.home)} · ${x.state === "in" ? esc(x.detail) + ` (${x.awayScore}–${x.homeScore})` : esc(x.detail)}</option>`).join("");
-    if (saved && g.some((x) => x.event === saved)) $("game").value = saved;
+    const asked = new URLSearchParams(location.search).get("event");
+    const pick = [asked, saved].find((e) => e && g.some((x) => x.event === e));
+    if (pick) $("game").value = pick;
   }
 
   // Kalshi prices (the server re-fetches them after 30 s); a failure keeps the last ones
@@ -247,7 +259,11 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     if ($("auto").checked) timer = setInterval(poll, Number($("every").value) * 1000);
   }
 
-  $("game").addEventListener("change", () => { store.set("live:game", $("game").value); refresh(); });
+  $("game").addEventListener("change", () => {
+    store.set("live:game", $("game").value);
+    history.replaceState(null, "", "?event=" + encodeURIComponent($("game").value));
+    refresh();
+  });
   $("now").addEventListener("click", refresh);
   $("auto").addEventListener("change", schedule);
   $("every").addEventListener("change", schedule);

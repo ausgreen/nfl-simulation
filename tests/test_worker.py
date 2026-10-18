@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from nflsim.hosted.publish import LocalDir, S3Compatible, max_age
-from nflsim.hosted.worker import PAGE, Worker
+from nflsim.hosted.worker import EDGES_PAGE, GAME_PAGE, PAGE, Worker
 from nflsim.live import espn, feed
 
 SNAPSHOT = Path(__file__).parent / "fixtures" / "week5_snapshot.jsonl.gz"
@@ -99,6 +99,10 @@ def test_first_tick_publishes_page_games_state_and_status(tmp_path, model, repla
     assert post["now"] == "Final" and post["homeWin"] in (0.0, 1.0)
     status = json.loads((site / "status.json").read_text())
     assert status["errors"] == {} and status["live"] == 0
+    cards = {c["event"]: c for c in json.loads((site / "summary.json").read_text())}
+    assert cards[PRE]["homeWin"] == pre["homeWin"] and len(cards[PRE]["qbs"]) == 2 and cards[POST]["state"] == "post"
+    assert (site / "game.html").read_bytes() == GAME_PAGE.read_bytes()
+    assert (site / "edges.html").read_bytes() == EDGES_PAGE.read_bytes()
 
 
 def test_unchanged_games_are_not_recomputed_or_republished(tmp_path, model, replay):
@@ -221,12 +225,14 @@ def test_cache_times(path, seconds):
     assert max_age(path) == seconds
 
 
-def test_page_has_no_corrections_and_uses_relative_urls():
-    html = PAGE.read_text()
-    for gone in ("<form", "/api/", "overrides", "live:fix"):
-        assert gone not in html
+def test_pages_have_no_corrections_and_use_relative_urls():
+    home, game, edges = PAGE.read_text(), GAME_PAGE.read_text(), EDGES_PAGE.read_text()
+    for html in (home, game, edges):
+        for gone in ("<form", "/api/", "overrides", "live:fix"):
+            assert gone not in html
     for used in ('getJSON("games.json")', "getJSON(`state/", 'getJSON("status.json")'):
-        assert used in html
+        assert used in game
+    assert 'SUMMARY = "summary.json", GAME = "game.html"' in home
 
 
 def test_r2_publisher_sends_cache_headers():

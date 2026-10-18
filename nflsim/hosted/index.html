@@ -25,49 +25,37 @@
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font); }
-.app { max-width: 1100px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; }
-header.top { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
-h1 { margin: 0; font-size: 20px; letter-spacing: .02em; }
-.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-select, input, button { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 8px; }
-button { cursor: pointer; }
-button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-.panel { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px; }
-.score { display: flex; flex-wrap: wrap; gap: 18px; align-items: baseline; }
-.score .teams { font-size: 26px; font-weight: 700; font-family: var(--mono); }
-.score .meta { color: var(--ink-2); }
-.now { font-size: 18px; font-weight: 600; margin-top: 6px; }
+a { color: var(--accent); }
+.app { max-width: 1200px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; }
+header.site { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 20px; border-bottom: 1px solid var(--rule); }
+.brand { font-size: 18px; font-weight: 700; letter-spacing: .02em; padding-bottom: 8px; }
+.tabs { display: flex; gap: 2px; overflow-x: auto; }
+.tabs a { padding: 8px 12px; color: var(--ink-2); text-decoration: none; font-weight: 600; white-space: nowrap;
+  border-bottom: 3px solid transparent; margin-bottom: -1px; }
+.tabs a:hover { color: var(--ink); }
+.tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); }
+header.top { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; justify-content: space-between; }
+h1 { margin: 0; font-size: 17px; letter-spacing: .02em; }
+h2 { margin: 6px 0 0; font-size: 15px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); }
 .muted { color: var(--ink-3); }
-.badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--accent-wash); color: var(--accent); }
-.badge.warn { background: var(--warn-wash); color: var(--warn); }
-.pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-weight: 700; background: var(--accent); color: var(--bg); white-space: nowrap; }
-.pill.sm { padding: 0 8px; font-size: 12px; font-weight: 600; }
-.pill.same { background: transparent; color: var(--ink-2); border: 1px solid var(--rule); }
-.pill.change { background: var(--warn); color: var(--bg); }
-.teams .has { box-shadow: inset 0 -4px 0 var(--accent); padding-bottom: 2px; }
-.grid2 { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 14px; align-items: start; }
-@media (max-width: 820px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
-h2 { margin: 0 0 10px; font-size: 15px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); }
-table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--rule-2); vertical-align: middle; }
-th { font-size: 12px; color: var(--ink-3); font-weight: 600; }
-td.r, th.r { text-align: right; }
 .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-.bar { position: relative; height: 8px; background: var(--bar-2); border-radius: 4px; min-width: 60px; }
-.bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--bar); border-radius: 4px; }
-.bar b.ask { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--warn); }
-.mark-key { display: inline-block; width: 2px; height: 12px; background: var(--warn); vertical-align: -2px; margin-right: 4px; }
-.mix { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.final { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; }
-.final .lbl { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); font-weight: 600; }
-.final .sc { font: 700 24px var(--mono); }
-.quarters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 12px; padding-top: 10px;
-  border-top: 1px solid var(--rule-2); font-size: 12.5px; color: var(--ink-3); }
-@media (max-width: 620px) { .quarters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.quarters b { color: var(--ink-2); font-weight: 600; }
-.qbs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 14px; }
-.qb h3 { margin: 0; font-size: 16px; }
-.qb .sub { color: var(--ink-2); margin: 2px 0 8px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 12px; }
+.card { display: grid; gap: 8px; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px;
+  color: inherit; text-decoration: none; }
+.card:hover { border-color: var(--ink-3); }
+.card.live { border-left: 4px solid var(--accent); }
+.row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.teams { font: 700 20px var(--mono); }
+.teams .has { box-shadow: inset 0 -3px 0 var(--accent); }
+.status { font-size: 12.5px; color: var(--ink-2); text-align: right; white-space: nowrap; }
+.status .live-tag { color: var(--accent); font-weight: 700; letter-spacing: .05em; }
+.sit { font-weight: 600; }
+.last { font-size: 12.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--bar-2); }
+.wp i { background: var(--bar); }
+.wp-lbl { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--ink-2); }
+.qbs { display: grid; gap: 2px; font-size: 12.5px; color: var(--ink-2); border-top: 1px solid var(--rule-2); padding-top: 6px; }
+.badge { display: inline-block; padding: 0 7px; border-radius: 999px; font-size: 11.5px; background: var(--warn-wash); color: var(--warn); }
 .stale { background: var(--warn-wash); color: var(--warn); border: 1px solid var(--warn); border-radius: 8px; padding: 10px 14px; }
 .stale[hidden] { display: none; }
 .err { color: var(--warn); }
@@ -76,195 +64,95 @@ footer { color: var(--ink-3); font-size: 12.5px; }
 </head>
 <body>
 <div class="app">
-  <header class="top">
-    <h1>Live Game Companion</h1>
-    <div class="controls">
-      <select id="game" aria-label="Game"></select>
-      <label class="muted"><input type="checkbox" id="auto" checked> auto-refresh</label>
-      <select id="every" aria-label="Refresh interval"><option value="5">5 s</option><option value="10" selected>10 s</option><option value="30">30 s</option></select>
-      <button id="now" class="primary">Refresh</button>
-    </div>
+  <header class="site">
+    <span class="brand">Live Game Companion</span>
+    <nav class="tabs" aria-label="Pages"><a href="./" aria-current="page">All games</a><a href="game.html">Game</a><a href="edges.html">Model vs Kalshi</a></nav>
   </header>
-
+  <header class="top">
+    <h1>This week</h1>
+    <span class="muted" id="updated"></span>
+  </header>
   <div class="stale" id="stale" role="status" hidden></div>
-
-  <section class="panel" id="head" aria-live="polite"><span class="muted">Pick a game.</span></section>
-
-  <section class="panel" id="proj" hidden></section>
-
-  <div class="grid2">
-    <section class="panel">
-      <h2>The next snap</h2>
-      <table><thead><tr><th class="r">Chance</th><th></th><th>Outcome</th><th>Result</th></tr></thead><tbody id="next"></tbody></table>
-      <div class="mix" id="mix"></div>
-    </section>
-    <section class="panel">
-      <h2 id="drive-title">This drive</h2>
-      <table><thead><tr><th class="r">Chance</th><th></th><th>Outcome</th><th class="r">Plays</th><th class="r">Time</th></tr></thead><tbody id="drive"></tbody></table>
-    </section>
-  </div>
-
-  <section class="panel">
-      <h2>About these numbers</h2>
-      <p style="margin:0 0 8px">Updated from ESPN's live feed, which runs a few seconds behind TV and can briefly lag a score or a change of
-        possession. The numbers follow the feed as it is.</p>
-      <p class="muted" style="margin:0">Win chance and passing-yard chances come from simulating the rest of the game 4,000 times from the
-        current situation; the drive outcomes from 10,000 simulations of the current drive; the next-snap states from 20,000
-        one-play simulations.</p>
-  </section>
-
-  <section class="qbs" id="qbs"></section>
-
-  <footer>
-    Game simulator (nflsim/sim/): play-by-play tables from the five seasons before this one, team offense and defense ratings,
-    each game tuned to v3's expected yards and the lines' implied points. Next-snap states: 20,000 one-play simulations; drive outcomes:
-    10,000 simulations of the current drive; QB outlook and win
-    chance: 4,000 simulations of the rest of the game. Not modeled: penalties on plays that stand. For information only.
-  </footer>
+  <main id="games" aria-live="polite"><span class="muted">Loading this week's games…</span></main>
+  <footer>Win chances and projected finals come from simulating the rest of each game 4,000 times from the current
+    situation. Pick a game for the next snap, the drive, quarters and passing-yard lines. For information only.</footer>
 </div>
 
 <script>
 (() => {
+  const SUMMARY = "summary.json", GAME = "game.html", EVERY_S = 10, STALE_S = 60;
+  const asked = new URLSearchParams(location.search).get("event");  // an old link to a game's page
+  if (asked) location.replace(`${GAME}?event=${encodeURIComponent(asked)}`);
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  const pct = (x, d = 0) => x == null ? "—" : (x * 100).toFixed(d) + "%";
-  const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } },
-                  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} } };
-  let timer = null, last = null, busy = false, prices = null;
-  const STALE_S = 60;  // worker heartbeat older than this: show the banner
+  const pct = (x) => x == null ? "—" : Math.round(x * 100) + "%";
+  const ago = (s) => s < 120 ? `${Math.round(s)} s` : s < 7200 ? `${Math.round(s / 60)} min` : `${Math.round(s / 3600)} h`;
   const getJSON = async (path) => {
     const r = await fetch(path, { cache: "no-cache" });
-    if (!r.ok) throw new Error(r.status === 404 ? "no update yet for this game" : r.statusText);
+    if (!r.ok) throw new Error(r.statusText);
     return r.json();
   };
-  const ago = (s) => s < 120 ? `${Math.round(s)} s` : s < 7200 ? `${Math.round(s / 60)} min` : `${Math.round(s / 3600)} h`;
+  const kickoff = (t) => new Date(t).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+  const last = (n) => String(n || "").split(" ").slice(1).join(" ") || n;
 
-  async function loadGames() {
-    const g = await getJSON("games.json");
-    const saved = $("game").value || store.get("live:game");
-    $("game").innerHTML = g.map((x) => `<option value="${x.event}">${esc(x.away)} @ ${esc(x.home)} · ${x.state === "in" ? esc(x.detail) + ` (${x.awayScore}–${x.homeScore})` : esc(x.detail)}</option>`).join("");
-    if (saved && g.some((x) => x.event === saved)) $("game").value = saved;
+  function card(g) {
+    const live = g.state === "in", done = g.state === "post";
+    const as = g.score ? g.score.away : g.awayScore, hs = g.score ? g.score.home : g.homeScore;
+    const side = (t, sc) => `<span${g.ball && g.ball.team === t ? ` class="has" title="${esc(t)} has the ball"` : ""}>${esc(t)}${g.state === "pre" ? "" : " " + sc}</span>`;
+    const status = live ? `<span class="live-tag">LIVE</span> · ${esc(g.detail)}` : done ? esc(g.detail) : esc(kickoff(g.kickoff));
+    const line = g.line && g.line.spread != null
+      ? `${esc(g.home)} ${g.line.spread > 0 ? "−" + g.line.spread : "+" + Math.abs(g.line.spread)} · total ${g.line.total}` : "";
+    const sit = live ? `<div class="sit">${esc(g.ball ? `${g.ball.team} ${g.ball.kick ? "receives · kickoff next" : "ball · " + g.ball.situation}` : g.now)}</div>
+        <div class="last">${esc(g.lastPlay || "")}</div>` : done || !line ? "" : `<div class="muted">${line}</div>`;
+    let wp = "";
+    if (g.homeWin != null && !done) {
+      const aw = 1 - g.homeWin;
+      wp = `<div><div class="wp" title="Win chance"><i style="width:${(aw * 100).toFixed(1)}%"></i></div>
+        <div class="wp-lbl"><span>${esc(g.away)} win <b class="num">${pct(aw)}</b></span>
+        <span class="num">proj ${Math.round(g.final.away)}–${Math.round(g.final.home)}</span>
+        <span>${esc(g.home)} win <b class="num">${pct(g.homeWin)}</b></span></div></div>`;
+    } else if (g.homeWin == null && !done) {
+      wp = `<div class="muted">No simulation yet.</div>`;
+    }
+    const qbs = (g.qbs || []).map((q) => {
+      const name = `${esc(last(q.qb) || q.team)} <span class="muted">${esc(q.team)}</span>${q.out ? ` <span class="badge">may be out</span>` : ""}`;
+      const proj = done ? "" : g.state === "pre" ? ` · median <b class="num">${Math.round(q.median)}</b> (${Math.round(q.p10)}–${Math.round(q.p90)})`
+        : ` → median <b class="num">${Math.round(q.median)}</b> (${Math.round(q.p10)}–${Math.round(q.p90)})`;
+      return `<div>${name}: ${g.state === "pre" ? "" : `<b class="num">${Math.round(q.yds)}</b> yds`}${proj}</div>`;
+    }).join("");
+    return `<a class="card${live ? " live" : ""}" href="${GAME}?event=${encodeURIComponent(g.event)}">
+      <div class="row"><span class="teams">${side(g.away, as)} – ${side(g.home, hs)}</span><span class="status">${status}</span></div>
+      ${sit}${wp}${qbs ? `<div class="qbs">${qbs}</div>` : ""}</a>`;
   }
 
+  function render(cards) {
+    const groups = [["Live", cards.filter((g) => g.state === "in")],
+                    ["Upcoming", cards.filter((g) => g.state === "pre").sort((a, b) => a.kickoff.localeCompare(b.kickoff))],
+                    ["Final", cards.filter((g) => g.state === "post")]];
+    $("games").innerHTML = groups.filter(([, gs]) => gs.length)
+      .map(([name, gs]) => `<h2>${name} <span class="muted">${gs.length}</span></h2><div class="cards">${gs.map(card).join("")}</div>`).join("")
+      || `<span class="muted">No games this week.</span>`;
+  }
+
+  let busy = false;  // the local server can take a while (it simulates every game that changed)
   async function refresh() {
-    if (busy || !$("game").value) return;
+    if (busy) return;
     busy = true;
     try {
-      const [d, st, kp] = await Promise.all([getJSON(`state/${encodeURIComponent($("game").value)}.json`),
-                                             getJSON("status.json").catch(() => null), getJSON("kalshi.json").catch(() => null)]);
-      if (kp) prices = kp;
-      last = d; render(d); showStatus(st, d.event);
+      const [cards, st] = await Promise.all([getJSON(SUMMARY), getJSON("status.json").catch(() => null)]);
+      render(cards);
+      $("updated").textContent = `updated ${new Date().toLocaleTimeString()}`;
+      const behind = st ? (Date.now() - Date.parse(st.updated)) / 1000 : 0;
+      const limit = st ? Math.max(STALE_S, 2.5 * (st.every || 0)) : Infinity;
+      $("stale").hidden = behind <= limit;
+      $("stale").textContent = `Updates have paused: the last check of ESPN's feed was ${ago(behind)} ago. Numbers may be out of date.`;
     } catch (e) {
-      $("head").insertAdjacentHTML("beforeend", `<div class="err">Update failed: ${esc(e.message)}</div>`);
+      $("updated").innerHTML = `<span class="err">Update failed: ${esc(e.message)}</span>`;
     } finally { busy = false; }
   }
 
-  function showStatus(st, event) {
-    const el = $("stale");
-    if (!st) { el.hidden = false; el.textContent = "Can't reach the update service; numbers may be out of date."; return; }
-    const behind = (Date.now() - Date.parse(st.updated)) / 1000;
-    const err = (st.errors || {})[event];
-    const limit = Math.max(STALE_S, 2.5 * (st.every || 0));  // the worker checks less often between game windows
-    el.hidden = behind <= limit && !err;
-    el.textContent = behind > limit ? `Updates have paused: the last check of ESPN's feed was ${ago(behind)} ago. Numbers may be out of date.`
-      : err ? "This game's latest update failed; showing the last good numbers." : "";
-  }
-
-  function renderProj(d) {
-    const el = $("proj"), f = d.final, qs = d.quarters || [];
-    el.hidden = !f && !qs.length;
-    if (el.hidden) return;
-    const pts = (v, done) => done ? String(Math.round(v)) : v.toFixed(1);
-    const fav = f && (f.homeWin >= 0.5 ? [d.home, f.homeWin] : [d.away, f.awayWin]);
-    const head = !f ? "" : `<div class="final"><span class="lbl">${d.status === "post" ? "Final" : "Projected final"}</span>
-        <span class="sc">${esc(d.away)} ${Math.round(f.away)} – ${esc(d.home)} ${Math.round(f.home)}</span>
-        ${d.status === "post" ? "" : `<span class="badge">${esc(fav[0])} win ${pct(fav[1])}</span>`}</div>`;
-    const cell = (q) => {
-      const done = q.state === "done";
-      const tag = done ? "final" : q.state === "live" ? "now" : "expected";
-      const odds = done ? (q.home === q.away ? "tied" : `${esc(q.home > q.away ? d.home : d.away)} won the quarter`)
-        : `wins quarter: ${esc(d.away)} ${pct(q.awayWin)} · ${esc(d.home)} ${pct(q.homeWin)} · tie ${pct(q.tie)}`;
-      return `<div><b>Q${q.q}</b> ${tag}<br><span class="num">${esc(d.away)} ${pts(q.away, done)} – ${esc(d.home)} ${pts(q.home, done)}</span><br>${odds}</div>`;
-    };
-    el.innerHTML = head + (qs.length ? `<div class="quarters">${qs.map(cell).join("")}</div>` : "");
-  }
-
-  function render(d) {
-    renderProj(d);
-    const side = (t, sc) => `<span${d.ball && d.ball.team === t ? ` class="has" title="${esc(t)} has the ball"` : ""}>${esc(t)} ${sc}</span>`;
-    const holder = (b) => b ? `${b.team} ${b.kick ? "receives" : "ball"}` : "";
-    const age = d.feedTime ? Math.round((Date.now() - Date.parse(d.feedTime)) / 1000) : null;
-    const spread = d.line.spread == null ? "" : `line ${d.home} ${d.line.spread > 0 ? "−" + d.line.spread : "+" + Math.abs(d.line.spread)} · total ${d.line.total}`;
-    $("head").innerHTML = `<div class="score"><span class="teams">${side(d.away, d.score.away)} – ${side(d.home, d.score.home)}</span>
-        <span class="meta">${esc(d.detail)}</span><span class="meta">${esc(spread)}</span>
-</div>
-      <div class="now">${d.ball ? `<span class="pill">${esc(d.ball.team)} ${d.ball.kick ? "receives" : "ball"}</span> ${esc(d.ball.kick ? "Kickoff next" : d.ball.situation)}` : esc(d.now)}</div>
-      <div class="muted">Last play: ${esc(d.lastPlay || "—")}${age != null ? ` · last play ${ago(age)} ago` : ""}</div>`;
-    {
-    const max = Math.max(...d.next.map((x) => x.prob), 0.01);
-    $("next").innerHTML = d.next.map((x) => {
-        const extra = [x.first ? `1st down ${pct(x.first)}` : "", x.onDowns ? `turnover on downs ${pct(x.onDowns)}` : ""].filter(Boolean).join(" · ");
-        return `<tr><td class="r num">${pct(x.prob, 1)}</td>
-        <td style="width:24%"><div class="bar"><i style="width:${(x.prob / max * 100).toFixed(1)}%"></i></div></td>
-        <td>${esc(x.outcome)}${x.score ? ` <span class="badge">${esc(x.score)}</span>` : ""}</td>
-        <td class="muted">${x.situation == null ? esc(x.state) : (x.ball ? `<span class="pill sm ${x.change ? "change" : "same"}">${esc(holder({ team: x.ball, kick: x.kick }))}</span> ` : "") +
-          esc(x.kick ? (x.situation === "halftime kickoff" ? "Halftime kickoff" : "Kickoff") : x.situation)}${extra ? `<br><span class="num">${esc(extra)}</span>` : ""}</td></tr>`; }).join("") +
-      `<tr><td class="r num muted">${pct(Math.max(0, 1 - d.next.reduce((a, x) => a + x.prob, 0)), 1)}</td><td></td><td class="muted" colspan="2">every other outcome</td></tr>`;
-    const dv = d.drive || { team: "", kickoff: false, outcomes: [], expPts: null }, dmax = Math.max(...dv.outcomes.map((x) => x.prob), 0.01);
-    const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
-    $("drive-title").textContent = dv.kickoff ? "Next drive" : "This drive";
-    $("drive").innerHTML = dv.outcomes.length ? dv.outcomes.map((x) => `<tr><td class="r num">${pct(x.prob, 1)}</td>
-        <td style="width:24%"><div class="bar"><i style="width:${(x.prob / dmax * 100).toFixed(1)}%"></i></div></td>
-        <td>${esc(cap(x.result))}${x.score ? ` <span class="badge">${esc(x.score)}</span>` : ""}</td>
-        <td class="r num muted">${Math.round(x.plays)}</td><td class="r num muted">${esc(x.time)}</td></tr>`).join("") +
-      `<tr><td class="r num muted">${pct(Math.max(0, 1 - dv.outcomes.reduce((a, x) => a + x.prob, 0)), 1)}</td><td></td><td class="muted" colspan="3">every other outcome</td></tr>`
-      : `<tr><td class="muted" colspan="5">No drive in progress.</td></tr>`;
-    $("mix").innerHTML = `<span class="muted">Next play:</span>` + d.mix.map((m) => `<span class="badge">${esc(m.event)} ${pct(m.prob)}</span>`).join("");
-    }
-    $("qbs").innerHTML = d.qbs.map((q) => `<section class="panel qb">
-        <h3>${esc(q.qb || q.team)} <span class="muted">${esc(q.team)}</span> ${q.out ? `<span class="badge warn">may be out</span>` : ""}</h3>
-        <div class="sub"><b class="num">${Math.round(q.yds)}</b> yds now · ${q.median == null ? "no simulation" : `final median <b class="num">${Math.round(q.median)}</b> (80% range ${Math.round(q.p10)}–${Math.round(q.p90)})`} · pregame v3 ${Math.round(q.mu)}</div>
-        ${qbLines(d, q)}</section>`).join("");
-  }
-
-  // Kalshi's market for this QB (same team, same last name), if it lists one
-  const nameKey = (n) => String(n || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/\b(jr|sr|ii|iii|iv)\b\.?/g, "").replace(/[^a-z ]/g, " ").trim().split(/\s+/).pop();
-  const market = (d, q) => (((prices || {})[d.event] || {})[q.team] || []).find((m) => nameKey(m.qb) === nameKey(q.qb));
-  const cents = (x) => x == null ? "—" : `${Math.round(x * 100)}¢`;
-
-  function qbLines(d, q) {
-    const m = market(d, q);
-    const lines = q.lines.filter((l) => (l.line >= 150 && l.line <= 350) || (m && m.lines[l.line]));
-    if (!lines.length) return "";
-    const price = (l) => {
-      const k = m && m.lines[l.line];
-      if (!k) return "";
-      const tip = `Kalshi ${l.line}+: buy yes ${cents(k.ask)} · sell ${cents(k.bid)} · last ${cents(k.last)}`;
-      return `<a href="${esc(m.url)}" target="_blank" rel="noopener" title="${esc(tip)}">${cents(k.ask)}</a>`;
-    };
-    const tick = (l) => {
-      const k = m && m.lines[l.line];
-      return k && k.ask != null ? `<b class="ask" style="left:${(k.ask * 100).toFixed(1)}%" title="Kalshi ask ${cents(k.ask)} · model ${pct(l.p)}"></b>` : "";
-    };
-    return `<table><thead><tr><th>Line</th><th class="r">Chance</th>${m ? `<th class="r" title="Kalshi yes price (ask), before fees">Kalshi</th>` : ""}<th></th></tr></thead><tbody>
-        ${lines.map((l) => `<tr><td class="num">${l.line}+</td><td class="r num">${pct(l.p)}</td>${m ? `<td class="r num">${price(l)}</td>` : ""}<td style="width:${m ? 45 : 55}%"><div class="bar"><i style="width:${(l.p * 100).toFixed(1)}%"></i>${tick(l)}</div></td></tr>`).join("")}
-        </tbody></table>${m ? `<div class="muted" style="font-size:12px;margin-top:4px"><span class="mark-key"></span>Kalshi ask: bar past the mark = the model rates it above the price</div>` : ""}`;
-  }
-
-  function schedule() {
-    clearInterval(timer);
-    if ($("auto").checked) timer = setInterval(refresh, Number($("every").value) * 1000);
-  }
-
-  $("game").addEventListener("change", () => { store.set("live:game", $("game").value); refresh(); });
-  $("now").addEventListener("click", refresh);
-  $("auto").addEventListener("change", schedule);
-  $("every").addEventListener("change", schedule);
-
-  loadGames().then(() => { refresh(); schedule(); })
-    .catch((e) => { $("head").innerHTML = `<div class="err">Couldn't load this week's games: ${esc(e.message)}</div>`; });
-  setInterval(() => loadGames().catch(() => {}), 5 * 60 * 1000);  // scores and kickoffs in the game list
+  refresh();
+  setInterval(refresh, EVERY_S * 1000);
 })();
 </script>
 </body>
