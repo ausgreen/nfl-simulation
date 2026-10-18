@@ -139,7 +139,7 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     if (pick) $("game").value = pick;
   }
 
-  // Kalshi prices (the server re-fetches them after 30 s); a failure keeps the last ones
+  // Kalshi prices (the server re-fetches them after 5 s); a failure keeps the last ones
   async function loadPrices() {
     try { const r = await fetch("/api/kalshi"); if (r.ok) prices = await r.json(); } catch {}
   }

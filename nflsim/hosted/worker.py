@@ -8,8 +8,8 @@
     games.json          this week's games (espn.games)
     state/<event>.json  LiveModel.compute_state for the game, from ESPN's feed as is
     status.json         heartbeat: when the worker last checked, per-game errors
-    kalshi.json         Kalshi's passing-yard prices for the games (`prices`, e.g. kalshi.live_prices; every
-                        `prices_every` seconds; not published when `prices` is None, as in replays)
+    kalshi.json         Kalshi's passing-yard prices for the games (`prices`, e.g. kalshi.live_prices; each tick,
+                        or every `prices_every` seconds; not published when `prices` is None, as in replays)
 
 Each tick reads the scoreboard once and re-simulates a game when its signature changes. ESPN's box score lags the
 scoreboard (in the 2026-10-12 BUF @ LA recording, 23 of 24 completions' yards arrived 20-60 s after the play), so
@@ -68,7 +68,7 @@ class Worker:
     retry: float = 60.0
     only: set[str] | None = None  # restrict to these events (tests)
     prices: Callable[[list], dict] | None = None  # games -> market prices (kalshi.live_prices)
-    prices_every: float = 30.0
+    prices_every: float = 0.0  # 0: every tick, as often as the scoreboard is read
     priced: float | None = None  # wall clock of the last price fetch
     log: object = print
     model: LiveModel = None

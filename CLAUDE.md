@@ -57,7 +57,7 @@ calibration) -> vectorized simulation from any game state -> CLI replay or live 
 - `hosted/` — the web version (docs/hosting-plan.md). `worker.py`: `Worker.tick()` reads the scoreboard once,
   re-simulates a game when `espn.signature` changes, or when its box score (`espn.box`, re-read every 10 s while
   the game is in progress) catches up with a play (pregame: hourly) and publishes `games.json`, `state/<event>.json`, `status.json` (heartbeat + per-game errors), `kalshi.json` (Kalshi's
-  passing-yard prices, `kalshi.live_prices`, every 30 s; not in replays) and
+  passing-yard prices, `kalshi.live_prices`, every tick; not in replays) and
   the pages; unchanged bytes are not re-published; polls every 60 s between game windows, retries a failing game
   after 60 s. `publish.py`: `LocalDir` (atomic writes), `S3Compatible` (R2 via boto3, `hosted` extra) and cache times.
   `index.html` (home page): every game at a glance, live first, from `summary.json` (`live.app.summary`);

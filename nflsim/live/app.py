@@ -11,7 +11,7 @@ Stdlib HTTP server, local only. Endpoints: / (every game at a glance, `hosted/in
 (one game's page), /edges (model vs Kalshi, `hosted/edges.html`), /api/games, /api/state?event=<id>[&overrides], /api/sig?event=<id>
 (the game's play and box-score signature, no simulation; the page re-requests the state when it changes),
 /api/summary (the home page's cards: `summary` of each game's state), /api/kalshi (Kalshi's passing-yard prices for
-this week's games, kalshi.live_prices; re-fetched after 30 s).
+this week's games, kalshi.live_prices; re-fetched after 5 s).
 Overrides (any subset): pos=home|away, down, togo, yl (yards to the goal), clock (game seconds left), margin
 (home - away), kick=1 (a kickoff is next; pos = receiving team), yds_home, yds_away.
 """
@@ -397,7 +397,7 @@ def serve(port: int = 8765, ds: Dataset | None = None) -> None:
                             cards.append(summary(None, g))
                     self._send(200, cards)
                 elif u.path == "/api/kalshi":
-                    if time.monotonic() - prices["at"] > 30:
+                    if time.monotonic() - prices["at"] > 5:
                         prices.update(at=time.monotonic(), data=kalshi.live_prices(espn.games()))
                     self._send(200, prices["data"])
                 elif u.path == "/api/sig":

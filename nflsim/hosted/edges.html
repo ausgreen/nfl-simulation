@@ -91,7 +91,7 @@ footer p { margin: 0; }
 
 <script>
 (() => {
-  const SUMMARY = "summary.json", KALSHI = "kalshi.json", GAME = "game.html", EVERY_S = 10;
+  const SUMMARY = "summary.json", KALSHI = "kalshi.json", GAME = "game.html", EVERY_S = 5;
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const pct = (x) => (x * 100).toFixed(0) + "%";
