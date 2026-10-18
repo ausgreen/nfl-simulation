@@ -18,10 +18,15 @@ passing lines change. Games before kickoff are recomputed every `pregame_every` 
 change. Errors in one game are logged and reported in status.json; they don't stop the others, and the game is
 retried after `retry` seconds (a failing upstream, e.g. Open-Meteo for the week's predictions, isn't hammered).
 With no game in progress or starting within `soon` seconds, the scoreboard is polled every `idle_every` seconds.
+
+With `history` (a directory), every change is also appended to <history>/<UTC date>.jsonl.gz, one JSON record per
+line: {"t", "kind": "kalshi", "prices"} (kalshi.json) or {"t", "kind": "state", "card"} (the game's summary card:
+clock, score, win chance, each QB's yards and line chances). `read_history` reads them back.
 """
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import time
@@ -68,6 +73,7 @@ class Worker:
     retry: float = 60.0
     only: set[str] | None = None  # restrict to these events (tests)
     prices: Callable[[list], dict] | None = None  # games -> market prices (kalshi.live_prices)
+    history: Path | None = None  # where to append every published change (None: nowhere)
     prices_every: float = 0.0  # 0: every tick, as often as the scoreboard is read
     priced: float | None = None  # wall clock of the last price fetch
     log: object = print
@@ -92,6 +98,16 @@ class Worker:
 
     def put_json(self, path: str, obj) -> bool:
         return self.put(path, json.dumps(obj, default=_f, separators=(",", ":"), sort_keys=True).encode())
+
+    def record(self, kind: str, t: float, **fields) -> None:
+        """Append one record to today's history file (a gzip member per record; gzip readers read them all)."""
+        if self.history is None:
+            return
+        path = Path(self.history) / f"{datetime.fromtimestamp(t, timezone.utc):%Y-%m-%d}.jsonl.gz"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        line = json.dumps({"t": _iso(t), "kind": kind, **fields}, default=_f, separators=(",", ":"), sort_keys=True)
+        with gzip.open(path, "at") as f:
+            f.write(line + "\n")
 
     # --- the loop -----------------------------------------------------------------------------------------------
 
@@ -157,6 +173,8 @@ class Worker:
                 n += 1
                 t.sig, t.box, t.computed, t.error, t.out = sig, box, now, None, out
                 wrote = self.put_json(f"state/{ev}.json", out)
+                if wrote:
+                    self.record("state", now, card=summary(out, g))
                 self.log(f"{g['away']} @ {g['home']} {out['clock']}: {out['now']} "
                          f"({time.perf_counter() - started:.1f} s{'' if wrote else ', unchanged'})")
             except Exception as e:
@@ -167,7 +185,9 @@ class Worker:
         if self.prices and (self.priced is None or time.monotonic() - self.priced >= self.prices_every):
             self.priced = time.monotonic()
             try:
-                self.put_json("kalshi.json", self.prices(games))
+                quotes = self.prices(games)
+                if self.put_json("kalshi.json", quotes):
+                    self.record("kalshi", now, prices=quotes)
             except Exception as e:  # the page keeps the last prices
                 self.log(f"prices: {type(e).__name__}: {e}")
         self.interval = self._interval(games, now)
@@ -189,3 +209,9 @@ class Worker:
                 time.sleep(max(0.0, (self.interval or self.every) - (time.monotonic() - t0)))
         except KeyboardInterrupt:
             pass
+
+
+def read_history(path: Path | str) -> list[dict]:
+    """The records of one history file (Worker.history), oldest first."""
+    with gzip.open(path, "rt") as f:
+        return [json.loads(line) for line in f if line.strip()]

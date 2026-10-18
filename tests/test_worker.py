@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from nflsim.hosted.publish import LocalDir, S3Compatible, max_age
-from nflsim.hosted.worker import EDGES_PAGE, GAME_PAGE, PAGE, Worker
+from nflsim.hosted.worker import EDGES_PAGE, GAME_PAGE, PAGE, Worker, read_history
 from nflsim.live import espn, feed
 
 SNAPSHOT = Path(__file__).parent / "fixtures" / "week5_snapshot.jsonl.gz"
@@ -120,11 +120,16 @@ def test_prices_are_published_when_they_change(tmp_path, model, replay):
     replay(SNAPSHOT)
     quotes = [{"1": {"LA": []}}, {"1": {"LA": []}}, {"1": {"LA": [{"qb": "Matthew Stafford"}]}}]
     w = _worker(tmp_path, model, [POST])
-    w.prices, w.prices_every = lambda games: quotes.pop(0), 0.0
+    w.prices, w.prices_every, w.history = lambda games: quotes.pop(0), 0.0, tmp_path / "history"
     w.start()
     for _ in range(3):
         w.tick()
     assert w.publisher.puts.count("kalshi.json") == 2
+    (day,) = (tmp_path / "history").iterdir()
+    recs = read_history(day)
+    assert [r["kind"] for r in recs if r["kind"] == "kalshi"] == ["kalshi", "kalshi"]
+    state = [r for r in recs if r["kind"] == "state"]
+    assert len(state) == 1 and state[0]["card"]["event"] == POST and state[0]["card"]["qbs"]
     assert json.loads((tmp_path / "site" / "kalshi.json").read_text()) == {"1": {"LA": [{"qb": "Matthew Stafford"}]}}
 
 

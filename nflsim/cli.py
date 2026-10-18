@@ -93,7 +93,8 @@ def cmd_worker(ds, a):
     from . import kalshi
 
     w = Worker(ds, pub, every=a.every, only=set(a.game) if a.game else None,
-               prices=None if a.replay else kalshi.live_prices)
+               prices=None if a.replay else kalshi.live_prices,
+               history=None if a.replay else ds.data_dir / "live" / "history")
     if a.once:
         w.start()
         w.tick()

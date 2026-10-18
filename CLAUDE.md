@@ -63,7 +63,8 @@ calibration) -> vectorized simulation from any game state -> CLI replay or live 
   `index.html` (home page): every game at a glance, live first, from `summary.json` (`live.app.summary`);
   `game.html?event=<id>`: one game; `edges.html`: the
   model's passing-yard chances vs Kalshi's prices, largest gaps first. All read the JSON by relative URL and show a stale-data banner. Locally: `/`, `/game`, `/edges`.
-  No viewer input reaches the worker.
+  No viewer input reaches the worker. Every published price and state change is also appended to
+  `data/live/history/<UTC date>.jsonl.gz` (`Worker.history`, `read_history`; not in replays) for grading the model vs Kalshi.
 
 Modeled since 2026-10-16: accepted penalties that wipe out the play, timeouts, two-minute warnings, overtime (NFL rules
 since 2025; the live app infers whose OT possession it is from the score), strip-sack and return fumbles, return TDs,
