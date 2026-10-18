@@ -8,7 +8,8 @@ Overtime is simulated (sim/engine.py); in overtime, whether each team has had it
 score (a team ahead has had it), so a tied overtime is treated as if neither had.
 
 Stdlib HTTP server, local only. Endpoints: / (page), /api/games, /api/state?event=<id>[&overrides], /api/sig?event=<id>
-(the game's play and box-score signature, no simulation; the page re-requests the state when it changes).
+(the game's play and box-score signature, no simulation; the page re-requests the state when it changes),
+/api/kalshi (Kalshi's passing-yard prices for this week's games, kalshi.live_prices; re-fetched after 30 s).
 Overrides (any subset): pos=home|away, down, togo, yl (yards to the goal), clock (game seconds left), margin
 (home - away), kick=1 (a kickoff is next; pos = receiving team), yds_home, yds_away.
 """
@@ -18,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
+import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -26,12 +28,13 @@ from urllib.parse import parse_qs, urlparse
 import numpy as np
 import pandas as pd
 
+from .. import kalshi
 from ..data import Dataset, load
 from ..sim import engine as E, pregame as PG, teams as TM
 from . import espn
 
 TEMPLATE = Path(__file__).with_name("live_template.html")
-LINES = list(range(150, 351, 25))
+LINES = list(range(100, 401, 25))  # the page shows 150-350, plus any other line Kalshi lists
 N_NEXT, N_DRIVE, N_GAME = 20000, 10000, 4000
 
 
@@ -328,6 +331,7 @@ def _f(v):
 
 def serve(port: int = 8765, ds: Dataset | None = None) -> None:
     model = LiveModel(ds or load())
+    prices = {"at": 0.0, "data": {}}
 
     class Handler(BaseHTTPRequestHandler):
         def _send(self, code, body, ctype="application/json"):
@@ -352,6 +356,10 @@ def serve(port: int = 8765, ds: Dataset | None = None) -> None:
                     if not ev:
                         return self._send(400, {"error": "event required"})
                     self._send(200, model.compute(ev, q))
+                elif u.path == "/api/kalshi":
+                    if time.monotonic() - prices["at"] > 30:
+                        prices.update(at=time.monotonic(), data=kalshi.live_prices(espn.games()))
+                    self._send(200, prices["data"])
                 elif u.path == "/api/sig":
                     if not q.get("event"):
                         return self._send(400, {"error": "event required"})

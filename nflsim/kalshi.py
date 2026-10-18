@@ -139,3 +139,43 @@ def as_quotes(snap: pd.DataFrame) -> pd.DataFrame:
         "yes_bid": s.yes_bid, "volume": s.volume, "source": s.ticker,
         "url": s.event_ticker.map(event_url),
     })
+
+
+TO_NFLVERSE = {"LAR": "LA", "JAC": "JAX", "WSH": "WAS"}  # Kalshi team codes that differ from nflverse's
+
+
+def _teams(event_ticker: str, away: str, home: str) -> tuple[str, str] | None:
+    """Kalshi's (away, home) codes if the event (KXNFLPASSYDS-26OCT18CHIATL) is this matchup."""
+    pair = event_ticker.rsplit("-", 1)[-1][7:]
+    for i in range(2, len(pair) - 1):
+        a, h = pair[:i], pair[i:]
+        if TO_NFLVERSE.get(a, a) == away and TO_NFLVERSE.get(h, h) == home:
+            return a, h
+    return None
+
+
+def live_prices(games: list[dict], markets: list[dict] | None = None) -> dict:
+    """Open markets per game on the scoreboard (espn.games rows), for the page to show beside the model's chances:
+    {event: {team: [{"qb", "url", "lines": {line: {"ask", "bid", "last"}}}]}}, prices in dollars."""
+    markets = fetch_markets() if markets is None else markets
+    out = {}
+    for g in games:
+        for m in markets:
+            codes = _teams(m["event_ticker"], g["away"], g["home"])
+            if not codes or m.get("strike_type") != "greater" or _num(m.get("floor_strike")) is None:
+                continue
+            player = m["ticker"].split("-")[2]
+            code = max((c for c in codes if player.startswith(c)), key=len, default=None)
+            if code is None:
+                continue
+            team = TO_NFLVERSE.get(code, code)
+            qb = m.get("title", "").split(":")[0].strip()
+            rows = out.setdefault(g["event"], {}).setdefault(team, [])
+            row = next((r for r in rows if r["qb"] == qb), None)
+            if row is None:
+                row = {"qb": qb, "url": event_url(m["event_ticker"]), "lines": {}}
+                rows.append(row)
+            row["lines"][str(round(_num(m["floor_strike"]) + 0.5))] = {
+                "ask": _num(m.get("yes_ask_dollars")), "bid": _num(m.get("yes_bid_dollars")),
+                "last": _num(m.get("last_price_dollars"))}
+    return out

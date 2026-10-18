@@ -55,6 +55,8 @@ td.r, th.r { text-align: right; }
 .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .bar { position: relative; height: 8px; background: var(--bar-2); border-radius: 4px; min-width: 60px; }
 .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--bar); border-radius: 4px; }
+.bar b.ask { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--warn); }
+.mark-key { display: inline-block; width: 2px; height: 12px; background: var(--warn); vertical-align: -2px; margin-right: 4px; }
 .mix { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .final { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; }
 .final .lbl { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); font-weight: 600; }
@@ -116,7 +118,7 @@ footer { color: var(--ink-3); font-size: 12.5px; }
   const pct = (x, d = 0) => x == null ? "—" : (x * 100).toFixed(d) + "%";
   const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } },
                   set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} } };
-  let timer = null, last = null, busy = false;
+  let timer = null, last = null, busy = false, prices = null;
 
   async function loadGames() {
     const r = await fetch("/api/games"); const g = await r.json();
@@ -125,12 +127,18 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     if (saved && g.some((x) => x.event === saved)) $("game").value = saved;
   }
 
+  // Kalshi prices (the server re-fetches them after 30 s); a failure keeps the last ones
+  async function loadPrices() {
+    try { const r = await fetch("/api/kalshi"); if (r.ok) prices = await r.json(); } catch {}
+  }
+
   async function refresh() {
     if (busy || !$("game").value) return;
     busy = true;
     const q = new URLSearchParams({ event: $("game").value });
     try {
-      const r = await fetch("/api/state?" + q); const d = await r.json();
+      const [r] = await Promise.all([fetch("/api/state?" + q), loadPrices()]);
+      const d = await r.json();
       if (!r.ok) throw new Error(d.error || r.statusText);
       last = d; render(d);
     } catch (e) {
@@ -192,9 +200,32 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     $("qbs").innerHTML = d.qbs.map((q) => `<section class="panel qb">
         <h3>${esc(q.qb || q.team)} <span class="muted">${esc(q.team)}</span> ${q.out ? `<span class="badge warn">may be out</span>` : ""}</h3>
         <div class="sub"><b class="num">${Math.round(q.yds)}</b> yds now · ${q.median == null ? "no simulation" : `final median <b class="num">${Math.round(q.median)}</b> (80% range ${Math.round(q.p10)}–${Math.round(q.p90)})`} · pregame v3 ${Math.round(q.mu)}</div>
-        ${q.lines.length ? `<table><thead><tr><th>Line</th><th class="r">Chance</th><th></th></tr></thead><tbody>
-        ${q.lines.map((l) => `<tr><td class="num">${l.line}+</td><td class="r num">${pct(l.p)}</td><td style="width:55%"><div class="bar"><i style="width:${(l.p * 100).toFixed(1)}%"></i></div></td></tr>`).join("")}
-        </tbody></table>` : ""}</section>`).join("");
+        ${qbLines(d, q)}</section>`).join("");
+  }
+
+  // Kalshi's market for this QB (same team, same last name), if it lists one
+  const nameKey = (n) => String(n || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\b(jr|sr|ii|iii|iv)\b\.?/g, "").replace(/[^a-z ]/g, " ").trim().split(/\s+/).pop();
+  const market = (d, q) => (((prices || {})[d.event] || {})[q.team] || []).find((m) => nameKey(m.qb) === nameKey(q.qb));
+  const cents = (x) => x == null ? "—" : `${Math.round(x * 100)}¢`;
+
+  function qbLines(d, q) {
+    const m = market(d, q);
+    const lines = q.lines.filter((l) => (l.line >= 150 && l.line <= 350) || (m && m.lines[l.line]));
+    if (!lines.length) return "";
+    const price = (l) => {
+      const k = m && m.lines[l.line];
+      if (!k) return "";
+      const tip = `Kalshi ${l.line}+: buy yes ${cents(k.ask)} · sell ${cents(k.bid)} · last ${cents(k.last)}`;
+      return `<a href="${esc(m.url)}" target="_blank" rel="noopener" title="${esc(tip)}">${cents(k.ask)}</a>`;
+    };
+    const tick = (l) => {
+      const k = m && m.lines[l.line];
+      return k && k.ask != null ? `<b class="ask" style="left:${(k.ask * 100).toFixed(1)}%" title="Kalshi ask ${cents(k.ask)} · model ${pct(l.p)}"></b>` : "";
+    };
+    return `<table><thead><tr><th>Line</th><th class="r">Chance</th>${m ? `<th class="r" title="Kalshi yes price (ask), before fees">Kalshi</th>` : ""}<th></th></tr></thead><tbody>
+        ${lines.map((l) => `<tr><td class="num">${l.line}+</td><td class="r num">${pct(l.p)}</td>${m ? `<td class="r num">${price(l)}</td>` : ""}<td style="width:${m ? 45 : 55}%"><div class="bar"><i style="width:${(l.p * 100).toFixed(1)}%"></i>${tick(l)}</div></td></tr>`).join("")}
+        </tbody></table>${m ? `<div class="muted" style="font-size:12px;margin-top:4px"><span class="mark-key"></span>Kalshi ask: bar past the mark = the model rates it above the price</div>` : ""}`;
   }
 
   // cheap check of ESPN's scoreboard (no simulation); recompute only when the play changed
@@ -205,6 +236,7 @@ footer { color: var(--ink-3); font-size: 12.5px; }
       if (!r.ok) throw new Error(d.error || r.statusText);
       $("checked").textContent = `checked ${new Date().toLocaleTimeString()}`;
       if (!last || last.event !== $("game").value || last.sig !== d.sig) refresh();
+      else { await loadPrices(); render(last); }
     } catch (e) {
       $("checked").textContent = `feed check failed: ${e.message}`;
     }

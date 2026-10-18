@@ -90,7 +90,10 @@ def cmd_worker(ds, a):
     else:
         pub = LocalDir(a.out)
         print(f"publishing to {a.out}/ (serve it: python -m http.server -d {a.out} 8000)")
-    w = Worker(ds, pub, every=a.every, only=set(a.game) if a.game else None)
+    from . import kalshi
+
+    w = Worker(ds, pub, every=a.every, only=set(a.game) if a.game else None,
+               prices=None if a.replay else kalshi.live_prices)
     if a.once:
         w.start()
         w.tick()

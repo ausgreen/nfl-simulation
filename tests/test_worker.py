@@ -112,6 +112,18 @@ def test_unchanged_games_are_not_recomputed_or_republished(tmp_path, model, repl
     assert w.publisher.puts[before:] == ["status.json"]  # the heartbeat moves; nothing else changed
 
 
+def test_prices_are_published_when_they_change(tmp_path, model, replay):
+    replay(SNAPSHOT)
+    quotes = [{"1": {"LA": []}}, {"1": {"LA": []}}, {"1": {"LA": [{"qb": "Matthew Stafford"}]}}]
+    w = _worker(tmp_path, model, [POST])
+    w.prices, w.prices_every = lambda games: quotes.pop(0), 0.0
+    w.start()
+    for _ in range(3):
+        w.tick()
+    assert w.publisher.puts.count("kalshi.json") == 2
+    assert json.loads((tmp_path / "site" / "kalshi.json").read_text()) == {"1": {"LA": [{"qb": "Matthew Stafford"}]}}
+
+
 def _with_passing(summary, team, name, espn_id, comp_att, yds):
     """The summary with one passer's line in the box score."""
     summary = copy.deepcopy(summary)

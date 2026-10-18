@@ -56,7 +56,8 @@ calibration) -> vectorized simulation from any game state -> CLI replay or live 
   query-string overrides correct the feed's state; the page no longer has a form for them), `live_template.html` (the page).
 - `hosted/` — the web version (docs/hosting-plan.md). `worker.py`: `Worker.tick()` reads the scoreboard once,
   re-simulates a game when `espn.signature` changes, or when its box score (`espn.box`, re-read every 10 s while
-  the game is in progress) catches up with a play (pregame: hourly) and publishes `games.json`, `state/<event>.json`, `status.json` (heartbeat + per-game errors) and
+  the game is in progress) catches up with a play (pregame: hourly) and publishes `games.json`, `state/<event>.json`, `status.json` (heartbeat + per-game errors), `kalshi.json` (Kalshi's
+  passing-yard prices, `kalshi.live_prices`, every 30 s; not in replays) and
   `index.html`; unchanged bytes are not re-published; polls every 60 s between game windows, retries a failing game
   after 60 s. `publish.py`: `LocalDir` (atomic writes), `S3Compatible` (R2 via boto3, `hosted` extra) and cache times.
   `index.html`: the live page, reading the JSON by relative URL, with a stale-data banner.
@@ -85,5 +86,5 @@ chances are still somewhat overconfident in the 4th quarter (2025: 11 upsets whe
 `docs/hosting-plan.md`: host the live companion as a single worker that polls ESPN, re-simulates only on state
 changes, and writes static JSON to a CDN bucket. No corrections in the hosted version. Phases 1–2 (fetch/compute
 split, recorder, replay, worker, local publisher, static page) are built; phase 3 (R2 publisher, Docker,
-deployment) is built but not deployed: `nfl.austingreen.net` (R2 + Cloudflare Access), worker on a Hetzner server (Docker Compose);
+deployment) is deployed: `nfl.austingreen.net` (R2 + Cloudflare Access), worker on a Hetzner server (Docker Compose);
 `docs/deploy.md` has the set-up steps.

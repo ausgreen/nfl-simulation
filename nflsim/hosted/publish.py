@@ -1,5 +1,5 @@
 """Where the worker's files go. Every publisher has put(path, data, content_type, max_age); `path` is relative
-(index.html, games.json, status.json, state/<event>.json) and `max_age` is the CDN/browser cache time in seconds.
+(index.html, games.json, status.json, kalshi.json, state/<event>.json) and `max_age` is the CDN/browser cache time in seconds.
 
 LocalDir writes to a directory (development; serve it with `python -m http.server -d <dir>`). S3Compatible writes
 to a Cloudflare R2 (or AWS S3) bucket, served by the CDN at nfl.austingreen.net (docs/deploy.md); it needs the
@@ -14,7 +14,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 # cache time per published path (first matching prefix wins)
-MAX_AGE = (("state/", 3), ("games.json", 3), ("status.json", 0), ("index.html", 300))
+MAX_AGE = (("state/", 3), ("games.json", 3), ("status.json", 0), ("kalshi.json", 10), ("index.html", 300))
 
 
 def max_age(path: str) -> int:
