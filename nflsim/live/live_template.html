@@ -33,6 +33,11 @@ header.site { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 20
   border-bottom: 3px solid transparent; margin-bottom: -1px; }
 .tabs a:hover { color: var(--ink); }
 .tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); }
+@keyframes flash { from { background-color: var(--warn-wash); } }
+.flash { animation: flash 1.6s ease-out; }
+.beat { width: 9px; height: 9px; border-radius: 50%; background: var(--rule); align-self: center; margin-left: auto; }
+.beat.flash { animation: beat 1.6s ease-out; }
+@keyframes beat { from { background: var(--accent); box-shadow: 0 0 0 5px var(--accent-wash); } }
 header.top { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 h1 { margin: 0; font-size: 20px; letter-spacing: .02em; }
 .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -84,6 +89,7 @@ footer { color: var(--ink-3); font-size: 12.5px; }
   <header class="site">
     <span class="brand">Live Game Companion</span>
     <nav class="tabs" aria-label="Pages"><a href="/">All games</a><a href="/game" aria-current="page">Game</a><a href="/edges">Model vs Kalshi</a></nav>
+    <span class="beat" id="beat" title="Pulses when new numbers arrive"></span>
   </header>
   <header class="top">
     <div class="controls">
@@ -114,10 +120,7 @@ footer { color: var(--ink-3); font-size: 12.5px; }
   <section class="qbs" id="qbs"></section>
 
   <footer>
-    Game simulator (nflsim/sim/): play-by-play tables from the five seasons before this one, team offense and defense ratings,
-    each game tuned to v3's expected yards and the lines' implied points. Next-snap states: 20,000 one-play simulations; drive outcomes:
-    10,000 simulations of the current drive; QB outlook and win
-    chance: 4,000 simulations of the rest of the game. Not modeled: penalties on plays that stand. Local only; nothing is published.
+    Updated from ESPN's live feed, which runs a few seconds behind TV. Local only; nothing is published.
   </footer>
 </div>
 
@@ -177,7 +180,24 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     el.innerHTML = head + (qs.length ? `<div class="quarters">${qs.map(cell).join("")}</div>` : "");
   }
 
-  function render(d) {
+  // a cue when new numbers arrive: what changed flashes, and the dot in the tab bar pulses
+  const seen = new Map();
+  const restart = (el) => { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); };
+  function cue(...selectors) {
+    let changed = false;
+    for (const sel of selectors) document.querySelectorAll(sel).forEach((el, i) => {
+      const key = `${sel}|${el.dataset.key || i}`, html = el.innerHTML;
+      if (seen.has(key) && seen.get(key) !== html) { restart(el); changed = true; }
+      seen.set(key, html);
+    });
+    if (changed) restart($("beat"));
+  }
+
+  let shownEvent = null;
+  function render(d) { draw(d); cue("#head .score", "#head .now", "#proj .final", "#proj .quarters > div", "#next tr", "#drive tr", "#mix", "#qbs h3", "#qbs .sub", "#qbs tbody tr"); }
+
+  function draw(d) {
+    if (d.event !== shownEvent) { seen.clear(); shownEvent = d.event; }  // another game: nothing to compare
     renderProj(d);
     const side = (t, sc) => `<span${d.ball && d.ball.team === t ? ` class="has" title="${esc(t)} has the ball"` : ""}>${esc(t)} ${sc}</span>`;
     const holder = (b) => b ? `${b.team} ${b.kick ? "receives" : "ball"}` : "";
@@ -192,7 +212,7 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     const max = Math.max(...d.next.map((x) => x.prob), 0.01);
     $("next").innerHTML = d.next.map((x) => {
         const extra = [x.first ? `1st down ${pct(x.first)}` : "", x.onDowns ? `turnover on downs ${pct(x.onDowns)}` : ""].filter(Boolean).join(" · ");
-        return `<tr><td class="r num">${pct(x.prob, 1)}</td>
+        return `<tr data-key="${esc(x.outcome)}"><td class="r num">${pct(x.prob, 1)}</td>
         <td style="width:24%"><div class="bar"><i style="width:${(x.prob / max * 100).toFixed(1)}%"></i></div></td>
         <td>${esc(x.outcome)}${x.score ? ` <span class="badge">${esc(x.score)}</span>` : ""}</td>
         <td class="muted">${x.situation == null ? esc(x.state) : (x.ball ? `<span class="pill sm ${x.change ? "change" : "same"}">${esc(holder({ team: x.ball, kick: x.kick }))}</span> ` : "") +
@@ -201,7 +221,7 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     const dv = d.drive || { team: "", kickoff: false, outcomes: [], expPts: null }, dmax = Math.max(...dv.outcomes.map((x) => x.prob), 0.01);
     const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
     $("drive-title").textContent = dv.kickoff ? "Next drive" : "This drive";
-    $("drive").innerHTML = dv.outcomes.length ? dv.outcomes.map((x) => `<tr><td class="r num">${pct(x.prob, 1)}</td>
+    $("drive").innerHTML = dv.outcomes.length ? dv.outcomes.map((x) => `<tr data-key="${esc(x.result)}"><td class="r num">${pct(x.prob, 1)}</td>
         <td style="width:24%"><div class="bar"><i style="width:${(x.prob / dmax * 100).toFixed(1)}%"></i></div></td>
         <td>${esc(cap(x.result))}${x.score ? ` <span class="badge">${esc(x.score)}</span>` : ""}</td>
         <td class="r num muted">${Math.round(x.plays)}</td><td class="r num muted">${esc(x.time)}</td></tr>`).join("") +
@@ -211,7 +231,7 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     }
     $("qbs").innerHTML = d.qbs.map((q) => `<section class="panel qb">
         <h3>${esc(q.qb || q.team)} <span class="muted">${esc(q.team)}</span> ${q.out ? `<span class="badge warn">may be out</span>` : ""}</h3>
-        <div class="sub"><b class="num">${Math.round(q.yds)}</b> yds now · ${q.median == null ? "no simulation" : `final median <b class="num">${Math.round(q.median)}</b> (80% range ${Math.round(q.p10)}–${Math.round(q.p90)})`} · pregame v3 ${Math.round(q.mu)}</div>
+        <div class="sub"><b class="num">${Math.round(q.yds)}</b> yds now · ${q.median == null ? "no projection yet" : `final median <b class="num">${Math.round(q.median)}</b> (80% range ${Math.round(q.p10)}–${Math.round(q.p90)})`} · pregame ${Math.round(q.mu)}</div>
         ${qbLines(d, q)}</section>`).join("");
   }
 
@@ -236,7 +256,7 @@ footer { color: var(--ink-3); font-size: 12.5px; }
       return k && k.ask != null ? `<b class="ask" style="left:${(k.ask * 100).toFixed(1)}%" title="Kalshi ask ${cents(k.ask)} · model ${pct(l.p)}"></b>` : "";
     };
     return `<table><thead><tr><th>Line</th><th class="r">Chance</th>${m ? `<th class="r" title="Kalshi yes price (ask), before fees">Kalshi</th>` : ""}<th></th></tr></thead><tbody>
-        ${lines.map((l) => `<tr><td class="num">${l.line}+</td><td class="r num">${pct(l.p)}</td>${m ? `<td class="r num">${price(l)}</td>` : ""}<td style="width:${m ? 45 : 55}%"><div class="bar"><i style="width:${(l.p * 100).toFixed(1)}%"></i>${tick(l)}</div></td></tr>`).join("")}
+        ${lines.map((l) => `<tr data-key="${esc(q.team)}-${l.line}"><td class="num">${l.line}+</td><td class="r num">${pct(l.p)}</td>${m ? `<td class="r num">${price(l)}</td>` : ""}<td style="width:${m ? 45 : 55}%"><div class="bar"><i style="width:${(l.p * 100).toFixed(1)}%"></i>${tick(l)}</div></td></tr>`).join("")}
         </tbody></table>${m ? `<div class="muted" style="font-size:12px;margin-top:4px"><span class="mark-key"></span>Kalshi ask: bar past the mark = the model rates it above the price</div>` : ""}`;
   }
 

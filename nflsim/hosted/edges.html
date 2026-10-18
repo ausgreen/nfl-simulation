@@ -34,6 +34,11 @@ header.site { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 20
   border-bottom: 3px solid transparent; margin-bottom: -1px; }
 .tabs a:hover { color: var(--ink); }
 .tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); }
+@keyframes flash { from { background-color: var(--warn-wash); } }
+.flash { animation: flash 1.6s ease-out; }
+.beat { width: 9px; height: 9px; border-radius: 50%; background: var(--rule); align-self: center; margin-left: auto; }
+.beat.flash { animation: beat 1.6s ease-out; }
+@keyframes beat { from { background: var(--accent); box-shadow: 0 0 0 5px var(--accent-wash); } }
 header.top { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; justify-content: space-between; }
 h1 { margin: 0; font-size: 17px; letter-spacing: .02em; }
 .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; color: var(--ink-2); }
@@ -62,6 +67,7 @@ footer p { margin: 0; }
   <header class="site">
     <span class="brand">Live Game Companion</span>
     <nav class="tabs" aria-label="Pages"><a href="./">All games</a><a href="game.html">Game</a><a href="edges.html" aria-current="page">Model vs Kalshi</a></nav>
+    <span class="beat" id="beat" title="Pulses when new numbers arrive"></span>
   </header>
   <header class="top">
     <h1>Biggest gaps: QB passing yards</h1>
@@ -83,9 +89,7 @@ footer p { margin: 0; }
     <p>Each Kalshi line priced both ways: buying yes at the ask, or no at 1 − the bid (the price to bet the QB stays under).
       Gap = the model's chance of that side winning minus its price. Return = expected profit per $1, after Kalshi's taker fee
       (7% × price × (1 − price), rounded up to the cent, per contract). Lines already decided (the QB is past them) and games
-      that are over are left out; so are prices of 1¢ or 99¢ and up.</p>
-    <p>The model's chances come from 4,000 simulations of the rest of each game. They are known to be somewhat
-      overconfident late in games, so a large gap is not necessarily value. For information only.</p>
+      that are over are left out; so are prices of 1¢ or 99¢ and up. For information only.</p>
   </footer>
 </div>
 
@@ -109,6 +113,19 @@ footer p { margin: 0; }
     .replace(/\b(jr|sr|ii|iii|iv)\b\.?/g, "").replace(/[^a-z ]/g, " ").trim().split(/\s+/).pop();
   const fee = (price) => Math.ceil(0.07 * price * (1 - price) * 100 - 1e-9) / 100;
   const kickoff = (t) => new Date(t).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+
+  // a cue when new numbers arrive: what changed flashes, and the dot in the tab bar pulses
+  const seen = new Map();
+  const restart = (el) => { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); };
+  function cue(...selectors) {
+    let changed = false;
+    for (const sel of selectors) document.querySelectorAll(sel).forEach((el, i) => {
+      const key = `${sel}|${el.dataset.key || i}`, html = el.innerHTML;
+      if (seen.has(key) && seen.get(key) !== html) { restart(el); changed = true; }
+      seen.set(key, html);
+    });
+    if (changed) restart($("beat"));
+  }
 
   function bets(cards, prices) {
     const out = [];
@@ -136,7 +153,7 @@ footer p { margin: 0; }
     const g = b.g, live = g.state === "in";
     const when = live ? `<span class="live">LIVE</span> <span class="muted">${esc(g.clock)}</span>` : `<span class="muted">${esc(kickoff(g.kickoff))}</span>`;
     const lo = Math.min(b.p, b.price), hi = Math.max(b.p, b.price);
-    return `<tr>
+    return `<tr data-key="${esc(`${g.event}-${b.q.team}-${b.line}-${b.side}`)}">
       <td><a href="${GAME}?event=${encodeURIComponent(g.event)}">${esc(g.away)} @ ${esc(g.home)}</a> ${when}</td>
       <td>${esc(b.q.qb)} <span class="muted">${esc(b.q.team)}</span></td>
       <td class="r num">${live ? Math.round(b.q.yds) : "—"}</td>
@@ -159,6 +176,7 @@ footer p { margin: 0; }
       const shown = all.slice(0, Number($("top").value));
       $("rows").innerHTML = shown.map(row).join("") ||
         `<tr><td colspan="9" class="muted">No Kalshi prices to compare right now.</td></tr>`;
+      cue("#rows tr");
       $("updated").textContent = `${all.length} prices · updated ${new Date().toLocaleTimeString()}`;
     } catch (e) {
       $("updated").innerHTML = `<span class="err">Update failed: ${esc(e.message)}</span>`;

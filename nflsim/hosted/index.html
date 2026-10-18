@@ -34,6 +34,11 @@ header.site { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 20
   border-bottom: 3px solid transparent; margin-bottom: -1px; }
 .tabs a:hover { color: var(--ink); }
 .tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); }
+@keyframes flash { from { background-color: var(--warn-wash); } }
+.flash { animation: flash 1.6s ease-out; }
+.beat { width: 9px; height: 9px; border-radius: 50%; background: var(--rule); align-self: center; margin-left: auto; }
+.beat.flash { animation: beat 1.6s ease-out; }
+@keyframes beat { from { background: var(--accent); box-shadow: 0 0 0 5px var(--accent-wash); } }
 header.top { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; justify-content: space-between; }
 h1 { margin: 0; font-size: 17px; letter-spacing: .02em; }
 h2 { margin: 6px 0 0; font-size: 15px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); }
@@ -67,6 +72,7 @@ footer { color: var(--ink-3); font-size: 12.5px; }
   <header class="site">
     <span class="brand">Live Game Companion</span>
     <nav class="tabs" aria-label="Pages"><a href="./" aria-current="page">All games</a><a href="game.html">Game</a><a href="edges.html">Model vs Kalshi</a></nav>
+    <span class="beat" id="beat" title="Pulses when new numbers arrive"></span>
   </header>
   <header class="top">
     <h1>This week</h1>
@@ -74,8 +80,7 @@ footer { color: var(--ink-3); font-size: 12.5px; }
   </header>
   <div class="stale" id="stale" role="status" hidden></div>
   <main id="games" aria-live="polite"><span class="muted">Loading this week's games…</span></main>
-  <footer>Win chances and projected finals come from simulating the rest of each game 4,000 times from the current
-    situation. Pick a game for the next snap, the drive, quarters and passing-yard lines. For information only.</footer>
+  <footer>Updated from ESPN's live feed, which runs a few seconds behind TV. For information only.</footer>
 </div>
 
 <script>
@@ -95,6 +100,19 @@ footer { color: var(--ink-3); font-size: 12.5px; }
   const kickoff = (t) => new Date(t).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
   const last = (n) => String(n || "").split(" ").slice(1).join(" ") || n;
 
+  // a cue when new numbers arrive: what changed flashes, and the dot in the tab bar pulses
+  const seen = new Map();
+  const restart = (el) => { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); };
+  function cue(...selectors) {
+    let changed = false;
+    for (const sel of selectors) document.querySelectorAll(sel).forEach((el, i) => {
+      const key = `${sel}|${el.dataset.key || i}`, html = el.innerHTML;
+      if (seen.has(key) && seen.get(key) !== html) { restart(el); changed = true; }
+      seen.set(key, html);
+    });
+    if (changed) restart($("beat"));
+  }
+
   function card(g) {
     const live = g.state === "in", done = g.state === "post";
     const as = g.score ? g.score.away : g.awayScore, hs = g.score ? g.score.home : g.homeScore;
@@ -112,7 +130,7 @@ footer { color: var(--ink-3); font-size: 12.5px; }
         <span class="num">proj ${Math.round(g.final.away)}–${Math.round(g.final.home)}</span>
         <span>${esc(g.home)} win <b class="num">${pct(g.homeWin)}</b></span></div></div>`;
     } else if (g.homeWin == null && !done) {
-      wp = `<div class="muted">No simulation yet.</div>`;
+      wp = `<div class="muted">No projection yet.</div>`;
     }
     const qbs = (g.qbs || []).map((q) => {
       const name = `${esc(last(q.qb) || q.team)} <span class="muted">${esc(q.team)}</span>${q.out ? ` <span class="badge">may be out</span>` : ""}`;
@@ -120,7 +138,7 @@ footer { color: var(--ink-3); font-size: 12.5px; }
         : ` → median <b class="num">${Math.round(q.median)}</b> (${Math.round(q.p10)}–${Math.round(q.p90)})`;
       return `<div>${name}: ${g.state === "pre" ? "" : `<b class="num">${Math.round(q.yds)}</b> yds`}${proj}</div>`;
     }).join("");
-    return `<a class="card${live ? " live" : ""}" href="${GAME}?event=${encodeURIComponent(g.event)}">
+    return `<a class="card${live ? " live" : ""}" data-key="${esc(g.event)}" href="${GAME}?event=${encodeURIComponent(g.event)}">
       <div class="row"><span class="teams">${side(g.away, as)} – ${side(g.home, hs)}</span><span class="status">${status}</span></div>
       ${sit}${wp}${qbs ? `<div class="qbs">${qbs}</div>` : ""}</a>`;
   }
@@ -134,13 +152,14 @@ footer { color: var(--ink-3); font-size: 12.5px; }
       || `<span class="muted">No games this week.</span>`;
   }
 
-  let busy = false;  // the local server can take a while (it simulates every game that changed)
+  let busy = false;  // the local server can take a while to answer
   async function refresh() {
     if (busy) return;
     busy = true;
     try {
       const [cards, st] = await Promise.all([getJSON(SUMMARY), getJSON("status.json").catch(() => null)]);
       render(cards);
+      cue(".card");
       $("updated").textContent = `updated ${new Date().toLocaleTimeString()}`;
       const behind = st ? (Date.now() - Date.parse(st.updated)) / 1000 : 0;
       const limit = st ? Math.max(STALE_S, 2.5 * (st.every || 0)) : Infinity;
