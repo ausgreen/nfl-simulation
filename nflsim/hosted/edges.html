@@ -8,24 +8,25 @@
 :root {
   --bg: #f4f5f2; --surface: #ffffff; --ink: #18211c; --ink-2: #4a554e; --ink-3: #7b857f;
   --rule: #d9ddd8; --rule-2: #eceee9; --accent: #1d6b48; --accent-wash: #e3f0e8; --warn: #9a5b00; --warn-wash: #fff3dc;
-  --bar: #1d6b48; --bar-2: #c9d9cf;
+  --bar: #1d6b48; --bar-2: #c9d9cf; --link: #1a5c9e;
   --font: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #0f1512; --surface: #161e1a; --ink: #e6ece8; --ink-2: #b2bcb6; --ink-3: #7f8a84;
     --rule: #2a3530; --rule-2: #212b26; --accent: #4fb582; --accent-wash: #1c3327; --warn: #f5c34f; --warn-wash: #3a2f12;
-    --bar: #4fb582; --bar-2: #2c3d34;
+    --bar: #4fb582; --bar-2: #2c3d34; --link: #7cc4ff;
   }
 }
 :root[data-theme="dark"] {
   --bg: #0f1512; --surface: #161e1a; --ink: #e6ece8; --ink-2: #b2bcb6; --ink-3: #7f8a84;
   --rule: #2a3530; --rule-2: #212b26; --accent: #4fb582; --accent-wash: #1c3327; --warn: #f5c34f; --warn-wash: #3a2f12;
-  --bar: #4fb582; --bar-2: #2c3d34;
+  --bar: #4fb582; --bar-2: #2c3d34; --link: #7cc4ff;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font); }
-a { color: var(--accent); }
+a { color: var(--link); text-underline-offset: 2px; }
+a:hover { text-decoration-thickness: 2px; }
 .app { max-width: 1200px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; }
 header.site { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 20px; border-bottom: 1px solid var(--rule); }
 .brand { font-size: 18px; font-weight: 700; letter-spacing: .02em; padding-bottom: 8px; }
@@ -56,6 +57,9 @@ td.r, th.r { text-align: right; }
 .side.no { background: var(--warn-wash); color: var(--warn); }
 .gap { position: relative; height: 8px; min-width: 90px; background: var(--bar-2); border-radius: 4px; }
 .gap i { position: absolute; top: 0; bottom: 0; background: var(--bar); border-radius: 4px; }
+.bar .rng, .gap .rng { position: absolute; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%;
+  background: var(--ink); }
+.rng-key { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ink); margin: 0 2px 1px 0; }
 .gap b { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--warn); }
 .err { color: var(--warn); }
 footer { color: var(--ink-3); font-size: 12.5px; display: grid; gap: 6px; }
@@ -89,7 +93,8 @@ footer p { margin: 0; }
     <p>Each Kalshi line priced both ways: buying yes at the ask, or no at 1 − the bid (the price to bet the QB stays under).
       Gap = the model's chance of that side winning minus its price. Return = expected profit per $1, after Kalshi's taker fee
       (7% × price × (1 − price), rounded up to the cent, per contract). Lines already decided (the QB is past them) and games
-      that are over are left out; so are prices of 1¢ or 99¢ and up. For information only.</p>
+      that are over are left out; so are prices of 1¢ or 99¢ and up. Dots on the bar and the range under Gap: the likely
+      range of the chance. For information only.</p>
   </footer>
 </div>
 
@@ -137,11 +142,12 @@ footer p { margin: 0; }
         for (const l of q.lines || []) {
           const k = m.lines[l.line];
           if (!k || q.yds >= l.line) continue;  // no market, or already decided
-          const sides = [["yes", l.p, k.ask], ["no", 1 - l.p, k.bid == null ? null : 1 - k.bid]];
-          for (const [side, p, price] of sides) {
+          const sides = [["yes", l.p, k.ask, l.lo, l.hi], ["no", 1 - l.p, k.bid == null ? null : 1 - k.bid,
+                                                            l.hi == null ? null : 1 - l.hi, l.lo == null ? null : 1 - l.lo]];
+          for (const [side, p, price, lo, hi] of sides) {
             if (price == null || price <= 0.01 || price >= 0.99) continue;
             const cost = price + fee(price);
-            out.push({ g, q, m, line: l.line, side, p, price, gap: p - price, ret: p / cost - 1 });
+            out.push({ g, q, m, line: l.line, side, p, lo, hi, price, gap: p - price, ret: p / cost - 1 });
           }
         }
       }
@@ -158,10 +164,10 @@ footer p { margin: 0; }
       <td>${esc(b.q.qb)} <span class="muted">${esc(b.q.team)}</span></td>
       <td class="r num">${live ? Math.round(b.q.yds) : "—"}</td>
       <td><span class="side ${b.side}">${b.side === "yes" ? `${b.line}+ yes` : `under ${b.line} (no)`}</span></td>
-      <td class="r num">${pct(b.p)}</td>
+      <td class="r num" title="${b.lo == null ? "" : `likely range ${pct(b.lo)}–${pct(b.hi)}`}">${pct(b.p)}</td>
       <td class="r num"><a href="${esc(b.m.url)}" target="_blank" rel="noopener">${cents(b.price)}</a></td>
-      <td><div class="gap" title="model ${pct(b.p)} vs price ${cents(b.price)}"><i style="left:${(lo * 100).toFixed(1)}%;width:${((hi - lo) * 100).toFixed(1)}%"></i><b style="left:${(b.price * 100).toFixed(1)}%"></b></div></td>
-      <td class="r num">${signed(b.gap * 100)} pts</td>
+      <td><div class="gap" title="model ${pct(b.p)} vs price ${cents(b.price)}"><i style="left:${(lo * 100).toFixed(1)}%;width:${((hi - lo) * 100).toFixed(1)}%"></i><b style="left:${(b.price * 100).toFixed(1)}%"></b>${b.lo == null ? "" : [b.lo, b.hi].map((x) => `<span class="rng" style="left:${(x * 100).toFixed(1)}%"></span>`).join("")}</div></td>
+      <td class="r num">${signed(b.gap * 100)} pts${b.lo == null ? "" : `<br><span class="muted" style="font-size:11.5px">${signed((b.lo - b.price) * 100)} to ${signed((b.hi - b.price) * 100)}</span>`}</td>
       <td class="r num">${signed(b.ret * 100)}%</td></tr>`;
   }
 

@@ -40,6 +40,8 @@ HOME = Path(__file__).parent.parent / "hosted" / "index.html"  # every game at a
 EDGES = HOME.with_name("edges.html")  # the model vs Kalshi's passing-yard prices, largest gaps first
 LINES = list(range(100, 401, 25))  # the page shows 150-350, plus any other line Kalshi lists
 N_NEXT, N_DRIVE, N_GAME = 20000, 10000, 4000
+# each line's range: the chance with the QB's form fixed at the 10th and 90th percentile of its (in-game) posterior
+Z_RANGE = 1.2816
 
 
 def field(yl: float, offense: str, defense: str) -> str:
@@ -239,6 +241,13 @@ class LiveModel:
         frame = pd.DataFrame([row])
         nxt = E.simulate(su.tb, frame, N_NEXT, seed=1, max_steps=1, record=True)
         full_y, full_p, full_q = E.simulate(su.tb, frame, N_GAME, seed=2, points=True, quarters=True)
+        def form_at(z):
+            cols = {}
+            for k in (0, 1):
+                cols[f"form_mean{k}"], cols[f"form_sd{k}"] = row[f"form_mean{k}"] + z * row[f"form_sd{k}"], 0.0
+            return frame.assign(**cols)
+        band = pd.concat([form_at(-Z_RANGE), form_at(Z_RANGE)], ignore_index=True)
+        band_y = E.simulate(su.tb, band, N_GAME, seed=2)  # (2, n, 2): QB form low, high
         drv = E.simulate(su.tb, frame, N_DRIVE, seed=3, drive=True)
         teams = (home, away)
 
@@ -284,7 +293,8 @@ class LiveModel:
             qb.append({"team": teams[t], "qb": name, "yds": y, "out": out, "mu": float(an[f"mu{t}"]),
                        "median": float(np.median(fy)), "p10": float(np.percentile(fy, 10)),
                        "p90": float(np.percentile(fy, 90)),
-                       "lines": [{"line": L, "p": float(np.mean(fy >= L))} for L in LINES]})
+                       "lines": [{"line": L, "p": float(np.mean(fy >= L)), "lo": float(np.mean(band_y[0, :, t] >= L)),
+                                  "hi": float(np.mean(band_y[1, :, t] >= L))} for L in LINES]})
         final_margin = st["margin"] + full_p[0, :, 0] - full_p[0, :, 1]
         home_win = float(np.mean(final_margin > 0) + 0.5 * np.mean(final_margin == 0))
         final = {"home": float(s["home_score"] + full_p[0, :, 0].mean()),

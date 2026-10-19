@@ -8,23 +8,25 @@
 :root {
   --bg: #f4f5f2; --surface: #ffffff; --ink: #18211c; --ink-2: #4a554e; --ink-3: #7b857f;
   --rule: #d9ddd8; --rule-2: #eceee9; --accent: #1d6b48; --accent-wash: #e3f0e8; --warn: #9a5b00; --warn-wash: #fff3dc;
-  --bar: #1d6b48; --bar-2: #c9d9cf;
+  --bar: #1d6b48; --bar-2: #c9d9cf; --link: #1a5c9e;
   --font: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #0f1512; --surface: #161e1a; --ink: #e6ece8; --ink-2: #b2bcb6; --ink-3: #7f8a84;
     --rule: #2a3530; --rule-2: #212b26; --accent: #4fb582; --accent-wash: #1c3327; --warn: #f5c34f; --warn-wash: #3a2f12;
-    --bar: #4fb582; --bar-2: #2c3d34;
+    --bar: #4fb582; --bar-2: #2c3d34; --link: #7cc4ff;
   }
 }
 :root[data-theme="dark"] {
   --bg: #0f1512; --surface: #161e1a; --ink: #e6ece8; --ink-2: #b2bcb6; --ink-3: #7f8a84;
   --rule: #2a3530; --rule-2: #212b26; --accent: #4fb582; --accent-wash: #1c3327; --warn: #f5c34f; --warn-wash: #3a2f12;
-  --bar: #4fb582; --bar-2: #2c3d34;
+  --bar: #4fb582; --bar-2: #2c3d34; --link: #7cc4ff;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font); }
+a { color: var(--link); text-underline-offset: 2px; }
+a:hover { text-decoration-thickness: 2px; }
 .app { max-width: 1100px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; }
 header.site { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 20px; border-bottom: 1px solid var(--rule); }
 .brand { font-size: 18px; font-weight: 700; letter-spacing: .02em; padding-bottom: 8px; }
@@ -68,6 +70,9 @@ td.r, th.r { text-align: right; }
 .bar { position: relative; height: 8px; background: var(--bar-2); border-radius: 4px; min-width: 60px; }
 .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--bar); border-radius: 4px; }
 .bar b.ask { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--warn); }
+.bar .rng, .gap .rng { position: absolute; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%;
+  background: var(--ink); }
+.rng-key { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ink); margin: 0 2px 1px 0; }
 .mark-key { display: inline-block; width: 2px; height: 12px; background: var(--warn); vertical-align: -2px; margin-right: 4px; }
 .mix { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .final { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; }
@@ -251,13 +256,15 @@ footer { color: var(--ink-3); font-size: 12.5px; }
       const tip = `Kalshi ${l.line}+: buy yes ${cents(k.ask)} · sell ${cents(k.bid)} · last ${cents(k.last)}`;
       return `<a href="${esc(m.url)}" target="_blank" rel="noopener" title="${esc(tip)}">${cents(k.ask)}</a>`;
     };
+    const spread = (l) => l.lo == null ? "" : `${l.line}+: ${pct(l.p)}, likely range ${pct(l.lo)}–${pct(l.hi)}`;
+    const dots = (l) => l.lo == null ? "" : [l.lo, l.hi].map((x) => `<span class="rng" style="left:${(x * 100).toFixed(1)}%"></span>`).join("");
     const tick = (l) => {
       const k = m && m.lines[l.line];
       return k && k.ask != null ? `<b class="ask" style="left:${(k.ask * 100).toFixed(1)}%" title="Kalshi ask ${cents(k.ask)} · model ${pct(l.p)}"></b>` : "";
     };
     return `<table><thead><tr><th>Line</th><th class="r">Chance</th>${m ? `<th class="r" title="Kalshi yes price (ask), before fees">Kalshi</th>` : ""}<th></th></tr></thead><tbody>
-        ${lines.map((l) => `<tr data-key="${esc(q.team)}-${l.line}"><td class="num">${l.line}+</td><td class="r num">${pct(l.p)}</td>${m ? `<td class="r num">${price(l)}</td>` : ""}<td style="width:${m ? 45 : 55}%"><div class="bar"><i style="width:${(l.p * 100).toFixed(1)}%"></i>${tick(l)}</div></td></tr>`).join("")}
-        </tbody></table>${m ? `<div class="muted" style="font-size:12px;margin-top:4px"><span class="mark-key"></span>Kalshi ask: bar past the mark = the model rates it above the price</div>` : ""}`;
+        ${lines.map((l) => `<tr data-key="${esc(q.team)}-${l.line}"><td class="num">${l.line}+</td><td class="r num">${pct(l.p)}</td>${m ? `<td class="r num">${price(l)}</td>` : ""}<td style="width:${m ? 45 : 55}%"><div class="bar" title="${esc(spread(l))}"><i style="width:${(l.p * 100).toFixed(1)}%"></i>${dots(l)}${tick(l)}</div></td></tr>`).join("")}
+        </tbody></table><div class="muted" style="font-size:12px;margin-top:4px"><span class="rng-key"></span><span class="rng-key"></span>likely range of the chance${m ? ` · <span class="mark-key"></span>Kalshi ask: bar past the mark = the model rates it above the price` : ""}</div>`;
   }
 
   // cheap check of ESPN's scoreboard (no simulation); recompute only when the play changed
