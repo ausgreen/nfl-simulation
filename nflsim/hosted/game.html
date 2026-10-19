@@ -142,12 +142,13 @@ footer { color: var(--ink-3); font-size: 12.5px; }
                   set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} } };
   let timer = null, last = null, busy = false, prices = null;
   const STALE_S = 60;  // worker heartbeat older than this: show the banner
+  const STATS_S = 2 * 86400;  // stats refreshed longer ago than this: say so
   const getJSON = async (path) => {
     const r = await fetch(path, { cache: "no-cache" });
     if (!r.ok) throw new Error(r.status === 404 ? "no update yet for this game" : r.statusText);
     return r.json();
   };
-  const ago = (s) => s < 120 ? `${Math.round(s)} s` : s < 7200 ? `${Math.round(s / 60)} min` : `${Math.round(s / 3600)} h`;
+  const ago = (s) => s < 120 ? `${Math.round(s)} s` : s < 7200 ? `${Math.round(s / 60)} min` : s < 172800 ? `${Math.round(s / 3600)} h` : `${Math.round(s / 86400)} days`;
 
   async function loadGames() {
     const g = await getJSON("games.json");
@@ -177,9 +178,12 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     const behind = (Date.now() - Date.parse(st.updated)) / 1000;
     const err = (st.errors || {})[event];
     const limit = Math.max(STALE_S, 2.5 * (st.every || 0));  // the worker checks less often between game windows
-    el.hidden = behind <= limit && !err;
+    const stats = st.data && st.data.stats ? (Date.now() - Date.parse(st.data.stats)) / 1000 : 0;
+    const oldStats = stats > STATS_S;
+    el.hidden = behind <= limit && !err && !oldStats;
     el.textContent = behind > limit ? `Updates have paused: the last check of ESPN's feed was ${ago(behind)} ago. Numbers may be out of date.`
-      : err ? "This game's latest update failed; showing the last good numbers." : "";
+      : err ? "This game's latest update failed; showing the last good numbers."
+      : oldStats ? `Player stats were last updated ${ago(stats)} ago; pregame numbers may be out of date.` : "";
   }
 
   function renderProj(d) {

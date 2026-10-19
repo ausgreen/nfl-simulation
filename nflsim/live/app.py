@@ -125,24 +125,58 @@ class LiveModel:
             self.setups[season] = PG.season_setup(self.ds, season)
         return self.setups[season]
 
+    def _preds_path(self, season: int, week: int) -> Path:
+        return self.ds.data_dir / "live" / f"live_v3_{season}_w{week:02d}.parquet"
+
+    def compute_preds(self, season: int, week: int) -> pd.DataFrame:
+        """v3's pregame expected yards for the week from the current data, one per team (the roster's starter).
+        Slow (~15 s: weather forecasts, form); doesn't touch the cache, so it can run in another thread."""
+        from ..v3.model import predict_week
+
+        p = predict_week(self.ds, season, week)
+        roster = set(self.ds.roster.player_id)
+        p = p.assign(on_roster=p.player_id.isin(roster)).sort_values("on_roster", ascending=False)
+        return p.drop_duplicates("team")[["game_id", "team", "player_id", "qb", "mu", "qb_starts"]]
+
     def preds(self, season: int, week: int) -> pd.DataFrame:
-        """v3's pregame expected yards for the week (cached on disk; one per team: the roster's starter)."""
+        """The week's pregame expected yards (cached on disk; computed the first time; `update_preds` refreshes)."""
         key = (season, week)
         if key not in self.week_preds:
-            path = self.ds.data_dir / "live" / f"live_v3_{season}_w{week:02d}.parquet"
+            path = self._preds_path(season, week)
             if path.exists():
                 p = pd.read_parquet(path)
             else:
-                from ..v3.model import predict_week
-
-                p = predict_week(self.ds, season, week)
-                roster = set(self.ds.roster.player_id)
-                p = p.assign(on_roster=p.player_id.isin(roster)).sort_values("on_roster", ascending=False)
-                p = p.drop_duplicates("team")[["game_id", "team", "player_id", "qb", "mu", "qb_starts"]]
+                p = self.compute_preds(season, week)
                 path.parent.mkdir(parents=True, exist_ok=True)
                 p.to_parquet(path, index=False)
             self.week_preds[key] = p.set_index("team")
         return self.week_preds[key]
+
+    def update_preds(self, season: int, week: int, fresh: pd.DataFrame, frozen: set[str]) -> dict[str, tuple]:
+        """Replace the week's pregame expectations with `fresh` (compute_preds), except the teams in `frozen` (games
+        under way or over keep the numbers they started with). Games whose numbers changed are re-anchored on their
+        next computation. Returns {team: (old mu, new mu)} for the teams that changed."""
+        with self.lock:
+            old = self.preds(season, week)
+            new = fresh.set_index("team")
+            keep = old[old.index.isin(frozen) | ~old.index.isin(new.index)]
+            merged = pd.concat([keep, new[~new.index.isin(keep.index)]])
+            changed = {t: (float(old.loc[t, "mu"]) if t in old.index else None, float(merged.loc[t, "mu"]))
+                       for t in merged.index if t not in keep.index
+                       and (t not in old.index or abs(old.loc[t, "mu"] - merged.loc[t, "mu"]) > 0.05
+                            or old.loc[t, "player_id"] != merged.loc[t, "player_id"])}
+            merged.reset_index().to_parquet(self._preds_path(season, week), index=False)
+            self.week_preds[(season, week)] = merged
+            for gid in {merged.loc[t, "game_id"] for t in changed}:
+                self.params.pop(gid, None)
+            return changed
+
+    def reset(self) -> None:
+        """Forget the season set-ups and anchored games (after a data refresh); rebuilt on next use."""
+        with self.lock:
+            self.setups.clear()
+            self.params.clear()
+            self.last.clear()
 
     def game_params(self, s: dict) -> tuple[pd.Series, dict]:
         """Anchored simulator parameters for the game (cached), and the expected starters."""

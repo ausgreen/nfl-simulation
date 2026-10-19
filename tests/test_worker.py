@@ -261,3 +261,34 @@ def test_r2_publisher_sends_cache_headers():
 def test_r2_publisher_names_missing_settings():
     with pytest.raises(SystemExit, match="R2_SECRET_ACCESS_KEY, R2_ACCOUNT_ID"):
         S3Compatible.from_env({"R2_BUCKET": "nflsim", "R2_ACCESS_KEY_ID": "k"}, client=object())
+
+
+def test_pregame_expectations_are_recomputed_except_for_games_under_way(tmp_path, model, replay, monkeypatch):
+    replay(SNAPSHOT)
+    w = _worker(tmp_path, model, [PRE, POST])
+    w.start()
+    w.tick()
+    before = json.loads((tmp_path / "site" / "state" / f"{PRE}.json").read_text())
+    (season, week), = w.weeks
+    old = model.preds(season, week).reset_index()
+    saved = dict(model.week_preds), dict(model.params)
+    # the recomputation writes its own copy of the week's file, and the "new data" gives every QB 40 more yards
+    monkeypatch.setattr(model, "_preds_path", lambda s, wk: tmp_path / "preds.parquet")
+    monkeypatch.setattr(model, "compute_preds", lambda s, wk: old.assign(mu=old.mu + 40.0))
+    try:
+        w.preds_every = 3600.0
+        w.tick()  # starts the recomputation
+        w._job.join()
+        w.tick()  # applies it, then recomputes the game still to start
+        after = json.loads((tmp_path / "site" / "state" / f"{PRE}.json").read_text())
+        p = model.preds(season, week)
+    finally:
+        model.week_preds, model.params = saved
+    final = next(g for g in espn.games() if g["event"] == POST)
+    for t in (final["home"], final["away"]):  # the game that's over keeps its numbers
+        assert p.loc[t, "mu"] == old.set_index("team").loc[t, "mu"]
+    for q0, q1 in zip(before["qbs"], after["qbs"]):
+        assert q1["mu"] == pytest.approx(q0["mu"] + 40.0)
+        assert sum(l["p"] for l in q1["lines"]) > sum(l["p"] for l in q0["lines"])
+    status = json.loads((tmp_path / "site" / "status.json").read_text())
+    assert status["data"]["projections"] is not None and status["data"]["stats"] is not None

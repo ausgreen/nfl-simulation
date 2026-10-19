@@ -86,13 +86,13 @@ footer { color: var(--ink-3); font-size: 12.5px; }
 
 <script>
 (() => {
-  const SUMMARY = "summary.json", GAME = "game.html", EVERY_S = 10, STALE_S = 60;
+  const SUMMARY = "summary.json", GAME = "game.html", EVERY_S = 10, STALE_S = 60, STATS_S = 2 * 86400;
   const asked = new URLSearchParams(location.search).get("event");  // an old link to a game's page
   if (asked) location.replace(`${GAME}?event=${encodeURIComponent(asked)}`);
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const pct = (x) => x == null ? "—" : Math.round(x * 100) + "%";
-  const ago = (s) => s < 120 ? `${Math.round(s)} s` : s < 7200 ? `${Math.round(s / 60)} min` : `${Math.round(s / 3600)} h`;
+  const ago = (s) => s < 120 ? `${Math.round(s)} s` : s < 7200 ? `${Math.round(s / 60)} min` : s < 172800 ? `${Math.round(s / 3600)} h` : `${Math.round(s / 86400)} days`;
   const getJSON = async (path) => {
     const r = await fetch(path, { cache: "no-cache" });
     if (!r.ok) throw new Error(r.statusText);
@@ -164,8 +164,10 @@ footer { color: var(--ink-3); font-size: 12.5px; }
       $("updated").textContent = `updated ${new Date().toLocaleTimeString()}`;
       const behind = st ? (Date.now() - Date.parse(st.updated)) / 1000 : 0;
       const limit = st ? Math.max(STALE_S, 2.5 * (st.every || 0)) : Infinity;
-      $("stale").hidden = behind <= limit;
-      $("stale").textContent = `Updates have paused: the last check of ESPN's feed was ${ago(behind)} ago. Numbers may be out of date.`;
+      const stats = st && st.data && st.data.stats ? (Date.now() - Date.parse(st.data.stats)) / 1000 : 0;
+      $("stale").hidden = behind <= limit && stats <= STATS_S;
+      $("stale").textContent = behind > limit ? `Updates have paused: the last check of ESPN's feed was ${ago(behind)} ago. Numbers may be out of date.`
+        : `Player stats were last updated ${ago(stats)} ago; pregame numbers may be out of date.`;
     } catch (e) {
       $("updated").innerHTML = `<span class="err">Update failed: ${esc(e.message)}</span>`;
     } finally { busy = false; }

@@ -78,8 +78,10 @@ chances are still somewhat overconfident in the 4th quarter (2025: 11 upsets whe
 
 - `sim_setup_<season>.pkl` is keyed by a hash of the simulator's code and the pbp files' mtimes, so editing `sim/`
   or refetching pbp triggers a rebuild (~45 s per season) on next use.
-- `live_v3_<season>_wNN.parquet` (weekly v3 predictions) is computed once per week and NOT refreshed when lines
-  move — delete it to recompute.
+- `live_v3_<season>_wNN.parquet` (weekly v3 predictions) is computed the first time a week is used. The hosted worker
+  recomputes it every 3 h while a game is still to start (`LiveModel.update_preds`; games under way keep their
+  numbers) and re-downloads stats, schedules and pbp daily when no game is on (`Worker.refresh`); status.json's `data`
+  has both times. The local app does neither: delete the file (or run `nflsim fetch`) to recompute.
 - `wf_rows.parquet` has no generator in this repo (copied from floormodel); don't delete it.
 
 `data/curated/roster.csv` (expected starters, preferred by the live app) and `venues.csv` are maintained by hand.

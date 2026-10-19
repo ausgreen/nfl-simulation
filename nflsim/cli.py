@@ -94,12 +94,23 @@ def cmd_worker(ds, a):
 
     w = Worker(ds, pub, every=a.every, only=set(a.game) if a.game else None,
                prices=None if a.replay else kalshi.live_prices,
-               history=None if a.replay else ds.data_dir / "live" / "history")
+               history=None if a.replay else ds.data_dir / "live" / "history",
+               refresh=None if a.replay else lambda: _refresh_data(ds), preds_every=None if a.replay else 3 * 3600.0)
     if a.once:
         w.start()
         w.tick()
     else:
         w.run(until)
+
+
+def _refresh_data(ds):
+    """The worker's daily refresh: this season's stats, schedules and play-by-play."""
+    from . import nflverse
+    from .sim import data as sim_data
+
+    season = range(ds.current_season, ds.current_season + 1)
+    nflverse.fetch(ds, season)
+    sim_data.fetch(ds, season)
 
 
 def cmd_feed(ds, a):
