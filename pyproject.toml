@@ -12,6 +12,7 @@ dependencies = [
 
 [project.optional-dependencies]
 hosted = ["boto3>=1.36"]  # the R2 publisher (nflsim worker --publish r2)
+kalshi = ["cryptography>=50.0.2", "websockets>=17.3"]  # Kalshi's WebSocket feed (KALSHI_* env vars)
 
 [project.scripts]
 nflsim = "nflsim.cli:main"

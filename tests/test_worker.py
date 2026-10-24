@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from nflsim.hosted.publish import LocalDir, S3Compatible, max_age
-from nflsim.hosted.worker import EDGES_PAGE, GAME_PAGE, PAGE, Worker, read_history
+from nflsim.hosted.worker import EDGES_PAGE, GAME_PAGE, PAGE, Worker, prices_at, read_history
 from nflsim.live import espn, feed
 
 SNAPSHOT = Path(__file__).parent / "fixtures" / "week5_snapshot.jsonl.gz"
@@ -118,19 +118,23 @@ def test_unchanged_games_are_not_recomputed_or_republished(tmp_path, model, repl
 
 def test_prices_are_published_when_they_change(tmp_path, model, replay):
     replay(SNAPSHOT)
-    quotes = [{"1": {"LA": []}}, {"1": {"LA": []}}, {"1": {"LA": [{"qb": "Matthew Stafford"}]}}]
+    stafford = {"1": {"LA": [{"qb": "Matthew Stafford"}]}, "2": {"KC": []}}
+    quotes = [{"1": {"LA": []}, "2": {"KC": []}}, {"1": {"LA": []}, "2": {"KC": []}}, stafford, {"1": stafford["1"]}]
     w = _worker(tmp_path, model, [POST])
     w.prices, w.prices_every, w.history = lambda games: quotes.pop(0), 0.0, tmp_path / "history"
     w.start()
-    for _ in range(3):
+    for _ in range(4):
         w.tick()
-    assert w.publisher.puts.count("kalshi.json") == 2
+    assert w.publisher.puts.count("kalshi.json") == 3
     (day,) = (tmp_path / "history").iterdir()
     recs = read_history(day)
-    assert [r["kind"] for r in recs if r["kind"] == "kalshi"] == ["kalshi", "kalshi"]
+    kal = [r for r in recs if r["kind"] == "kalshi"]
+    assert [r.get("partial") for r in kal] == [None, True, True]
+    assert kal[1]["prices"] == {"1": stafford["1"]} and kal[2]["prices"] == {} and kal[2]["gone"] == ["2"]
+    assert [p for _, p in prices_at(recs)] == [{"1": {"LA": []}, "2": {"KC": []}}, stafford, {"1": stafford["1"]}]
     state = [r for r in recs if r["kind"] == "state"]
     assert len(state) == 1 and state[0]["card"]["event"] == POST and state[0]["card"]["qbs"]
-    assert json.loads((tmp_path / "site" / "kalshi.json").read_text()) == {"1": {"LA": [{"qb": "Matthew Stafford"}]}}
+    assert json.loads((tmp_path / "site" / "kalshi.json").read_text()) == {"1": stafford["1"]}
 
 
 def _with_passing(summary, team, name, espn_id, comp_att, yds):
@@ -153,11 +157,11 @@ def test_a_new_play_is_simulated_once_and_again_when_the_box_score_catches_up(tm
     w = _worker(tmp_path, model, [PRE])
     w.start()
     counts = []
-    # kickoff state at +5, the pass at +10; its yards reach the box score at +22, read by the 10 s poll at +30
+    # kickoff state at +5, the pass at +10; its yards reach the box score at +22, read by the 4 s poll at +25
     for t in (0, 5, 10, 15, 20, 25, 30, 35, 40):
         rp.seek(t0 + t)
         counts.append(w.tick())
-    assert counts == [1, 1, 1, 0, 0, 0, 1, 0, 0]
+    assert counts == [1, 1, 1, 0, 0, 1, 0, 0, 0]
     state = json.loads((tmp_path / "site" / "state" / f"{PRE}.json").read_text())
     assert state["status"] == "in" and state["now"] == "LA ball · 1st & 10 at LA 37"
     assert next(q for q in state["qbs"] if q["team"] == "LA")["yds"] == 12
@@ -179,6 +183,9 @@ def test_overtime_is_simulated(tmp_path, model, replay):
     assert 0 < state["homeWin"] < 1 and state["next"] and state["drive"]["outcomes"]
     assert all(q["median"] >= q["yds"] and q["lines"] for q in state["qbs"])
     assert all(q["state"] == "done" for q in state["quarters"])
+    sc = state["scores"]  # overtime counts in the game and the 2nd half, not in the 4th quarter
+    assert sc["game"]["total"][0] >= 68 and len(sc["game"]["margin"][1]) > 1 and len(sc["2H"]["total"][1]) > 1
+    assert len(sc["4Q"]["total"][1]) == 1 and abs(sum(sc["game"]["home"][1]) - 1) < 1e-3
 
 
 def test_pregame_states_refresh_hourly(tmp_path, model, replay):
@@ -292,3 +299,24 @@ def test_pregame_expectations_are_recomputed_except_for_games_under_way(tmp_path
         assert sum(l["p"] for l in q1["lines"]) > sum(l["p"] for l in q0["lines"])
     status = json.loads((tmp_path / "site" / "status.json").read_text())
     assert status["data"]["projections"] is not None and status["data"]["stats"] is not None
+
+
+def test_simulation_processes_publish_the_same_states(tmp_path, model, replay):
+    rp = replay(SNAPSHOT)
+    one = _worker(tmp_path / "one", model, [PRE, POST])
+    one.start()
+    assert one.tick() == 2
+    two = _worker(tmp_path / "two", model, [PRE, POST])
+    two.procs = 2
+    two.start()
+    try:
+        assert two.tick() == 2
+        rp.advance(5)
+        assert two.tick() == 0  # nothing changed: nothing simulated, the processes stay up
+        assert two._pool is not None
+    finally:
+        two._restart_pool()
+    for ev in (PRE, POST):
+        a = json.loads((tmp_path / "one" / "site" / "state" / f"{ev}.json").read_text())
+        b = json.loads((tmp_path / "two" / "site" / "state" / f"{ev}.json").read_text())
+        assert a == b

@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import unicodedata
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -154,11 +156,80 @@ def _teams(event_ticker: str, away: str, home: str) -> tuple[str, str] | None:
     return None
 
 
-def live_prices(games: list[dict], markets: list[dict] | None = None) -> dict:
+# Kalshi's score markets: series -> (part of the game, kind). Kinds: "win" (a team, or "TIE", wins that part; a tied
+# game pays 50¢ a side), "spread" (team wins it by more than x), "total" (both teams score more than x), "team" (the
+# team scores more than x). Halves count overtime (the 2nd half includes it), quarters don't; the game does.
+PARTS = ("1Q", "2Q", "3Q", "4Q", "1H", "2H")
+SCORE_SERIES = {"KXNFLGAME": ("game", "win"), "KXNFLSPREAD": ("game", "spread"), "KXNFLTOTAL": ("game", "total"),
+                "KXNFLTEAMTOTAL": ("game", "team"),
+                **{f"KXNFL{p}{s}": (p, k) for p in PARTS for s, k in (("", "win"), ("SPREAD", "spread"), ("TOTAL", "total"))}}
+SCORE_EVERY = 10.0  # seconds between fetches of the score markets (a fetch is one request per series)
+_score_cache: dict = {"at": None, "markets": {}}
+
+
+def score_markets(every: float = SCORE_EVERY) -> list[dict]:
+    """Open markets of every SCORE_SERIES, re-fetched after `every` seconds; a series that fails keeps its last ones."""
+    c = _score_cache
+    if c["at"] is None or time.monotonic() - c["at"] >= every:
+        c["at"] = time.monotonic()
+
+        def one(series):
+            try:
+                c["markets"][series] = fetch_markets(series)
+            except Exception:  # rate limit or outage: the last prices stand
+                pass
+        with ThreadPoolExecutor(3) as pool:  # 3 at a time: well under Kalshi's read limit
+            list(pool.map(one, SCORE_SERIES))
+    return [m for ms in c["markets"].values() for m in ms]
+
+
+_slugs: dict[str, str] = {}
+
+
+def _slug(series: str) -> str:
+    """The series title as Kalshi's web pages spell it ("Pro Football Spread" -> pro-football-spread)."""
+    if series not in _slugs:
+        try:
+            title = _get(f"/series/{series}", {})["series"]["title"]
+            _slugs[series] = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+        except Exception:
+            return "markets"
+    return _slugs[series]
+
+
+def _score_row(m: dict, codes: tuple[str, str]) -> dict | None:
+    series = m["event_ticker"].split("-", 1)[0]
+    if series not in SCORE_SERIES:
+        return None
+    part, kind = SCORE_SERIES[series]
+    code = m["ticker"].rsplit("-", 1)[-1]
+    team = re.sub(r"\d+$", "", code)
+    if team != "TIE" and team not in codes and kind != "total":
+        return None
+    x = _num(m.get("floor_strike"))
+    if kind != "win" and (x is None or m.get("strike_type") != "greater"):
+        return None
+    return {"part": part, "kind": kind, "team": None if kind == "total" else TO_NFLVERSE.get(team, team),
+            "x": x, "ask": _num(m.get("yes_ask_dollars")), "bid": _num(m.get("yes_bid_dollars")),
+            "last": _num(m.get("last_price_dollars")), "url": event_url(m["event_ticker"], series, _slug(series))}
+
+
+def live_prices(games: list[dict], markets: list[dict] | None = None, scores: list[dict] | None = None) -> dict:
     """Open markets per game on the scoreboard (espn.games rows), for the page to show beside the model's chances:
-    {event: {team: [{"qb", "url", "lines": {line: {"ask", "bid", "last"}}}]}}, prices in dollars."""
+    {event: {team: [{"qb", "url", "lines": {line: {"ask", "bid", "last"}}}], "scores": [{"part", "kind", "team", "x",
+    "ask", "bid", "last", "url"}]}} (passing yards per QB; the score markets, see SCORE_SERIES), prices in dollars."""
     markets = fetch_markets() if markets is None else markets
+    scores = score_markets() if scores is None else scores
     out = {}
+    by_game: dict[str, list] = {}  # "26OCT19WASSF" -> its score markets
+    for m in scores:
+        by_game.setdefault(m["event_ticker"].rsplit("-", 1)[-1], []).append(m)
+    for g in games:
+        for key, ms in by_game.items():
+            codes = _teams("-" + key, g["away"], g["home"])
+            rows = [r for r in (_score_row(m, codes) for m in ms) if r] if codes else []
+            if rows:
+                out.setdefault(g["event"], {}).setdefault("scores", []).extend(rows)
     for g in games:
         for m in markets:
             codes = _teams(m["event_ticker"], g["away"], g["home"])

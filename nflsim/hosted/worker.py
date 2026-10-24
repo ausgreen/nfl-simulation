@@ -21,7 +21,9 @@ With no game in progress or starting within `soon` seconds, the scoreboard is po
 
 With `history` (a directory), every change is also appended to <history>/<UTC date>.jsonl.gz, one JSON record per
 line: {"t", "kind": "kalshi", "prices"} (kalshi.json) or {"t", "kind": "state", "card"} (the game's summary card:
-clock, score, win chance, each QB's yards and line chances). `read_history` reads them back.
+clock, score, win chance, each QB's yards and line chances, the score distributions). A file's first "kalshi" record
+has every game's prices; later ones (with "partial": true) only the games whose prices changed, and "gone": the games
+no longer listed. `read_history` reads them back; `prices_at` replays the "kalshi" records into whole snapshots.
 
 Data upkeep (both off unless set, as in replays and tests): with `refresh`, the stats, schedules and play-by-play are
 re-downloaded every `refresh_every` seconds while no game is on or about to start, and everything is recomputed from
@@ -72,8 +74,9 @@ class GameTrack:
 class Worker:
     ds: Dataset
     publisher: object
-    every: float = 5.0
-    box_every: float = 10.0
+    every: float = 5.0  # seconds between ticks while a game is about to start
+    live_every: float = 2.0  # ... while a game is in progress
+    box_every: float = 4.0
     pregame_every: float = 3600.0
     idle_every: float = 60.0
     soon: float = 900.0
@@ -83,6 +86,7 @@ class Worker:
     history: Path | None = None  # where to append every published change (None: nowhere)
     prices_every: float = 0.0  # 0: every tick, as often as the scoreboard is read
     priced: float | None = None  # wall clock of the last price fetch
+    _logged: tuple[str, dict] | None = None  # (history file, prices) of the last "kalshi" record
     refresh: Callable[[], None] | None = None  # re-downloads stats, schedules and play-by-play (cli: nflverse)
     refresh_every: float = 86400.0
     refreshed: float | None = None  # wall clock of the last data refresh (default: when passing.csv was written)
@@ -98,6 +102,9 @@ class Worker:
     published: dict[str, str] = field(default_factory=dict)  # path -> hash of the bytes last published
     computations: int = 0
     interval: float = 0.0  # seconds until the next tick, set by tick()
+    procs: int = 1  # simulation processes (1: in this one)
+    wake: threading.Event = field(default_factory=threading.Event)  # set it to tick now (e.g. a market moved)
+    _pool: object = None
 
     def __post_init__(self):
         self.model = self.model or LiveModel(self.ds)
@@ -127,6 +134,18 @@ class Worker:
         line = json.dumps({"t": _iso(t), "kind": kind, **fields}, default=_f, separators=(",", ":"), sort_keys=True)
         with gzip.open(path, "at") as f:
             f.write(line + "\n")
+
+    def _record_prices(self, t: float, quotes: dict) -> None:
+        """A "kalshi" record: every game's prices in a file's first one, after that only the games that changed."""
+        day = f"{datetime.fromtimestamp(t, timezone.utc):%Y-%m-%d}"
+        if self._logged is None or self._logged[0] != day:
+            self.record("kalshi", t, prices=quotes)
+        else:
+            last = self._logged[1]
+            changed = {ev: v for ev, v in quotes.items() if last.get(ev) != v}
+            gone = sorted(ev for ev in last if ev not in quotes)
+            self.record("kalshi", t, prices=changed, partial=True, **({"gone": gone} if gone else {}))
+        self._logged = (day, json.loads(json.dumps(quotes, default=_f)))
 
     # --- the loop -----------------------------------------------------------------------------------------------
 
@@ -173,6 +192,7 @@ class Worker:
                 self.log(f"data refresh failed: {type(e).__name__}: {e}")
             else:
                 self.model.reset()
+                self._restart_pool()
                 self.preds_at = None  # recompute the expectations from the new data now
                 for t in self.games.values():
                     t.sig = None
@@ -188,6 +208,8 @@ class Worker:
             self.projected = wall
             moved = [f"{t} {a:.0f}->{b:.0f}" for t, (a, b) in sorted(changed.items()) if a is None or abs(a - b) >= 1]
             self.log(f"projections: {', '.join(moved) if moved else 'no change'}")
+            if changed:
+                self._restart_pool()  # its processes re-read the expectations
             for g in games:
                 if g["state"] == "pre" and (g["home"] in changed or g["away"] in changed):
                     self.games.setdefault(g["event"], GameTrack()).sig = None
@@ -207,7 +229,47 @@ class Worker:
             self._job.start()
 
     def _interval(self, games: list[dict], now: float) -> float:
+        if any(g["state"] == "in" for g in games):
+            return self.live_every
         return self.every if self._busy(games, now) else max(self.every, self.idle_every)
+
+    # --- simulation: in this process, or in `procs` processes ---------------------------------------------------
+
+    def _restart_pool(self, terminate: bool = False) -> None:
+        """New processes after the model changed (they hold their own copy of it); `terminate`: stop them now,
+        mid-simulation (on exit: otherwise Python waits for the running ones to finish)."""
+        if self._pool is not None:
+            procs = list(getattr(self._pool, "_processes", {}).values()) if terminate else []
+            self._pool.shutdown(wait=False, cancel_futures=True)
+            for p in procs:
+                p.terminate()
+            self._pool = None
+
+    def _computed(self, states: list[dict]):
+        """(index, state or exception, seconds) for each game state, as each simulation finishes."""
+        if self.procs <= 1 or len(states) <= 1 and self._pool is None:
+            for i, s in enumerate(states):
+                started = time.perf_counter()
+                try:
+                    yield i, self.model.compute_state(s), time.perf_counter() - started
+                except Exception as e:
+                    yield i, e, time.perf_counter() - started
+            return
+        if self._pool is None:
+            import multiprocessing
+            from concurrent.futures import ProcessPoolExecutor
+
+            self._pool = ProcessPoolExecutor(self.procs, mp_context=multiprocessing.get_context("spawn"),
+                                             initializer=_child_init, initargs=(str(self.ds.data_dir),))
+        from concurrent.futures import as_completed
+
+        futures = {self._pool.submit(_child_compute, s): i for i, s in enumerate(states)}
+        for f in as_completed(futures):
+            try:
+                out, secs = f.result()
+                yield futures[f], out, secs
+            except Exception as e:
+                yield futures[f], e, 0.0
 
     def _poll_box(self, g: dict, t: GameTrack, now: float) -> bool:
         return g["state"] == "in" and (t.polled is None or now - t.polled >= self.box_every)
@@ -220,6 +282,7 @@ class Worker:
         self.put_json("games.json", games)
         self._upkeep(games, now)  # before the games: what it changes is recomputed in this tick
         n = 0
+        polls = []  # (g, track, situation, signature, due): games whose summary is read this tick
         for g in games:
             ev = g["event"]
             t = self.games.setdefault(ev, GameTrack())
@@ -230,34 +293,41 @@ class Worker:
                 self.weeks.add((sit["season"], sit["week"]))
                 sig = espn.signature(sit)
                 due = self._due(g, t, sig, now)
-                if not due and not self._poll_box(g, t, now):
-                    continue
-                s = espn.add_summary(sit, espn.summary(ev))
+                if due or self._poll_box(g, t, now):
+                    polls.append((g, t, sit, sig, due))
+            except Exception as e:
+                self._failed(g, t, e, now)
+        jobs = []  # (g, track, state, signature, box)
+        for (g, t, sit, sig, due), sm in zip(polls, self._summaries([p[0]["event"] for p in polls])):
+            try:
+                if isinstance(sm, Exception):
+                    raise sm
+                s = espn.add_summary(sit, sm)
                 t.polled = now
                 box = espn.box(s)
-                if not due and box == t.box:
-                    continue
-                started = time.perf_counter()
-                out = self.model.compute_state(s)
-                self.computations += 1
-                n += 1
-                t.sig, t.box, t.computed, t.error, t.out = sig, box, now, None, out
-                wrote = self.put_json(f"state/{ev}.json", out)
-                if wrote:
-                    self.record("state", now, card=summary(out, g))
-                self.log(f"{g['away']} @ {g['home']} {out['clock']}: {out['now']} "
-                         f"({time.perf_counter() - started:.1f} s{'' if wrote else ', unchanged'})")
+                if due or box != t.box:
+                    jobs.append((g, t, s, sig, box))
             except Exception as e:
-                t.error, t.failed = f"{type(e).__name__}: {e}", now
-                self.log(f"{g['away']} @ {g['home']}: {t.error}")
-                traceback.print_exc()
+                self._failed(g, t, e, now)
+        for i, out, secs in self._computed([j[2] for j in jobs]):
+            g, t, s, sig, box = jobs[i]
+            if isinstance(out, Exception):
+                self._failed(g, t, out, now)
+                continue
+            self.computations += 1
+            n += 1
+            t.sig, t.box, t.computed, t.error, t.out = sig, box, now, None, out
+            wrote = self.put_json(f"state/{g['event']}.json", out)
+            if wrote:
+                self.record("state", now, card=summary(out, g))
+            self.log(f"{g['away']} @ {g['home']} {out['clock']}: {out['now']} ({secs:.1f} s{'' if wrote else ', unchanged'})")
         self.put_json("summary.json", [summary(self.games[g["event"]].out, g) for g in games])
         if self.prices and (self.priced is None or time.monotonic() - self.priced >= self.prices_every):
             self.priced = time.monotonic()
             try:
                 quotes = self.prices(games)
                 if self.put_json("kalshi.json", quotes):
-                    self.record("kalshi", now, prices=quotes)
+                    self._record_prices(now, quotes)
             except Exception as e:  # the page keeps the last prices
                 self.log(f"prices: {type(e).__name__}: {e}")
         self.interval = self._interval(games, now)
@@ -268,8 +338,40 @@ class Worker:
                      "projections": _iso(self.projected) if self.projected else None}})
         return n
 
+    def _summaries(self, events: list[str]) -> list:
+        """ESPN's summary of each game (or the exception), fetched in parallel."""
+        if len(events) <= 1:
+            out = []
+            for ev in events:
+                try:
+                    out.append(espn.summary(ev))
+                except Exception as e:
+                    out.append(e)
+            return out
+        from concurrent.futures import ThreadPoolExecutor
+
+        def one(ev):
+            try:
+                return espn.summary(ev)
+            except Exception as e:
+                return e
+        with ThreadPoolExecutor(min(8, len(events))) as pool:
+            return list(pool.map(one, events))
+
+    def _failed(self, g: dict, t: GameTrack, e: Exception, now: float) -> None:
+        t.error, t.failed = f"{type(e).__name__}: {e}", now
+        self.log(f"{g['away']} @ {g['home']}: {t.error}")
+        if e.__traceback__ is not None:
+            traceback.print_exception(e)
+
     def run(self, until=None) -> None:
-        """Tick every `interval` seconds (wall clock) until `until()` is true or Ctrl-C."""
+        """Tick every `interval` seconds (wall clock) until `until()` is true, Ctrl-C or SIGTERM (docker stop)."""
+        import signal
+
+        if threading.current_thread() is threading.main_thread():
+            def stop(*_):
+                raise KeyboardInterrupt
+            signal.signal(signal.SIGTERM, stop)  # so the simulation processes are shut down too
         self.start()
         try:
             while not (until and until()):
@@ -278,12 +380,43 @@ class Worker:
                     self.tick()
                 except Exception as e:  # the scoreboard itself failed: keep the last files, try again
                     self.log(f"tick failed: {type(e).__name__}: {e}")
-                time.sleep(max(0.0, (self.interval or self.every) - (time.monotonic() - t0)))
+                # the next tick: after `interval`, or as soon as something sets `wake`
+                self.wake.wait(max(0.0, (self.interval or self.every) - (time.monotonic() - t0)))
+                self.wake.clear()
         except KeyboardInterrupt:
             pass
+        finally:
+            self._restart_pool(terminate=True)
+
+
+_MODEL: LiveModel | None = None  # in a simulation process
+
+
+def _child_init(data_dir: str) -> None:
+    global _MODEL
+    from ..data import load
+
+    _MODEL = LiveModel(load(data_dir))
+
+
+def _child_compute(s: dict) -> tuple[dict, float]:
+    started = time.perf_counter()
+    return _MODEL.compute_state(s), time.perf_counter() - started
 
 
 def read_history(path: Path | str) -> list[dict]:
     """The records of one history file (Worker.history), oldest first."""
     with gzip.open(path, "rt") as f:
         return [json.loads(line) for line in f if line.strip()]
+
+
+def prices_at(records: list[dict]):
+    """(t, every game's prices) after each "kalshi" record of read_history, partial records filled in."""
+    prices = {}
+    for r in records:
+        if r["kind"] != "kalshi":
+            continue
+        if not r.get("partial"):
+            prices = {}
+        prices = {**{ev: v for ev, v in prices.items() if ev not in r.get("gone", ())}, **r["prices"]}
+        yield r["t"], prices

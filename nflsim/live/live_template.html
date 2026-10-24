@@ -82,6 +82,17 @@ td.r, th.r { text-align: right; }
   border-top: 1px solid var(--rule-2); font-size: 12.5px; color: var(--ink-3); }
 @media (max-width: 620px) { .quarters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .quarters b { color: var(--ink-2); font-weight: 600; }
+.parts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.parts button { padding: 3px 10px; border-radius: 999px; font-size: 13px; }
+.now-part { font-weight: 600; margin-bottom: 6px; }
+.now-part:empty { display: none; }
+.parts button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
+.markets { display: grid; gap: 10px; }
+.mkt-tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--rule); }
+.mkt-tabs button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: none; padding: 8px 12px;
+  margin-bottom: -1px; font-weight: 600; color: var(--ink-2); }
+.mkt-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.markets [hidden] { display: none; }
 .qbs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 14px; }
 .qb h3 { margin: 0; font-size: 16px; }
 .qb .sub { color: var(--ink-2); margin: 2px 0 8px; }
@@ -122,7 +133,18 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     </section>
   </div>
 
-  <section class="qbs" id="qbs"></section>
+  <section class="markets">
+    <div class="mkt-tabs" id="mkt" role="tablist" aria-label="Markets"><button type="button" role="tab" data-set="yards">QB passing yards</button><button type="button" role="tab" data-set="scores">Score</button></div>
+    <div class="qbs" id="qbs" role="tabpanel"></div>
+    <section class="panel" id="lines" role="tabpanel" hidden>
+        <div class="parts" id="parts" role="group" aria-label="Part of the game"></div>
+      <div class="now-part" id="part-now"></div>
+      <table><thead><tr><th>Market</th><th class="r">Chance</th><th class="r" title="Kalshi yes price (ask), before fees">Kalshi</th><th></th></tr></thead>
+        <tbody id="lines-rows"></tbody></table>
+      <div class="muted" style="font-size:12px;margin-top:4px"><span class="mark-key"></span>Kalshi ask: bar past the mark = the model rates it above the price.
+        Quarters don't count overtime; the 2nd half and the game do.</div>
+    </section>
+  </section>
 
   <footer>
     Updated from ESPN's live feed, which runs a few seconds behind TV. Local only; nothing is published.
@@ -199,11 +221,12 @@ footer { color: var(--ink-3); font-size: 12.5px; }
   }
 
   let shownEvent = null;
-  function render(d) { draw(d); cue("#head .score", "#head .now", "#proj .final", "#proj .quarters > div", "#next tr", "#drive tr", "#mix", "#qbs h3", "#qbs .sub", "#qbs tbody tr"); }
+  function render(d) { draw(d); cue("#head .score", "#head .now", "#proj .final", "#proj .quarters > div", "#next tr", "#drive tr", "#mix", "#qbs h3", "#qbs .sub", "#qbs tbody tr", "#lines-rows tr", "#part-now"); }
 
   function draw(d) {
     if (d.event !== shownEvent) { seen.clear(); shownEvent = d.event; }  // another game: nothing to compare
     renderProj(d);
+    renderLines(d);
     const side = (t, sc) => `<span${d.ball && d.ball.team === t ? ` class="has" title="${esc(t)} has the ball"` : ""}>${esc(t)} ${sc}</span>`;
     const holder = (b) => b ? `${b.team} ${b.kick ? "receives" : "ball"}` : "";
     const age = d.feedTime ? Math.round((Date.now() - Date.parse(d.feedTime)) / 1000) : null;
@@ -280,6 +303,79 @@ footer { color: var(--ink-3); font-size: 12.5px; }
       $("checked").textContent = `feed check failed: ${e.message}`;
     }
   }
+
+  // Kalshi's score markets (game, halves, quarters) beside the model's chance, from its simulated points (d.scores)
+  const PARTS = { game: "Game", "1H": "1st half", "2H": "2nd half", "1Q": "Q1", "2Q": "Q2", "3Q": "Q3", "4Q": "Q4" };
+  let part = store.get("live:part") || "game";
+  const above = (pmf, x) => pmf[1].reduce((s, p, i) => pmf[0] + i > x ? s + p : s, 0);  // chance of more than x
+  function scoreChance(d, m) {
+    const s = d.scores && d.scores[m.part];
+    if (!s) return null;
+    const home = m.team === d.home, tie = above(s.margin, -0.5) - above(s.margin, 0.5);
+    if (m.kind === "win") return m.team === "TIE" ? tie
+      : (home ? above(s.margin, 0.5) : 1 - above(s.margin, -0.5)) + (m.part === "game" ? tie / 2 : 0);  // a tied game pays half
+    if (m.kind === "spread") return home ? above(s.margin, m.x) : 1 - above(s.margin, -m.x);
+    if (m.kind === "total") return above(s.total, m.x);
+    return above(home ? s.home : s.away, m.x);
+  }
+  const marketLabel = (m) => {
+    const n = m.x == null ? "" : Math.round(m.x + 0.5);
+    return m.kind === "win" ? (m.team === "TIE" ? "Tie" : `${m.team} wins`) : m.kind === "spread" ? `${m.team} by ${n}+`
+      : m.kind === "total" ? `${n}+ points` : `${m.team} scores ${n}+`;
+  };
+
+  // the points so far in a part of the game: "Q4 so far: NE 0 – CHI 0 · total 0 · tied"
+  function partNow(d, k) {
+    const s = d.scores && d.scores[k];
+    if (!s || !s.now || d.status === "pre") return "";
+    const [h, a] = s.now, diff = h - a;
+    const lead = diff === 0 ? "tied" : `${esc(diff > 0 ? d.home : d.away)} by ${Math.abs(diff)}`;
+    const label = d.status === "post" ? `${PARTS[k]} final` : `${PARTS[k]} so far`;
+    return `${label}: <span class="num">${esc(d.away)} ${a} – ${esc(d.home)} ${h}</span> · total <span class="num">${h + a}</span> · ${lead}`;
+  }
+
+  // which set of markets is shown: QB passing yards or score (more can be added as tabs and panels)
+  const SETS = { yards: "qbs", scores: "lines" };
+  let mset = SETS[store.get("live:markets")] ? store.get("live:markets") : "yards";
+  function showSet() {
+    document.querySelectorAll("#mkt button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.set === mset)));
+    for (const [k, id] of Object.entries(SETS)) $(id).hidden = k !== mset;
+  }
+  $("mkt").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-set]");
+    if (!b) return;
+    mset = b.dataset.set; store.set("live:markets", mset); showSet();
+  });
+  showSet();
+
+  function renderLines(d) {
+    const order = (m) => [["win", "spread", "total", "team"].indexOf(m.kind), [d.away, d.home, null, "TIE"].indexOf(m.team), m.x || 0];
+    const rows = ((((prices || {})[d.event] || {}).scores) || []).map((m) => ({ m, p: scoreChance(d, m) }))
+      .filter(({ m, p }) => p != null && !((m.ask == null || m.ask <= 0.02 || m.ask >= 0.98) && (p <= 0.02 || p >= 0.98)))  // decided
+      .sort((a, b) => { const x = order(a.m), y = order(b.m); return x[0] - y[0] || x[1] - y[1] || x[2] - y[2]; });
+    const parts = Object.keys(PARTS).filter((k) => rows.some((r) => r.m.part === k));
+    $("part-now").innerHTML = "";
+    if (!parts.length) {
+      $("parts").innerHTML = "";
+      $("lines-rows").innerHTML = `<tr><td class="muted" colspan="4">Kalshi lists no open score markets for this game.</td></tr>`;
+      return;
+    }
+    if (!parts.includes(part)) part = parts[0];
+    $("parts").innerHTML = parts.map((k) => `<button type="button" data-part="${k}" aria-pressed="${k === part}">${PARTS[k]}</button>`).join("");
+    $("part-now").innerHTML = partNow(d, part);
+    $("lines-rows").innerHTML = rows.filter((r) => r.m.part === part).map(({ m, p }) => {
+      const tip = `Kalshi ${marketLabel(m)}: buy yes ${cents(m.ask)} · sell ${cents(m.bid)} · last ${cents(m.last)}`;
+      return `<tr data-key="${esc(`${m.part}-${m.kind}-${m.team}-${m.x}`)}"><td>${esc(marketLabel(m))}</td><td class="r num">${pct(p)}</td>
+        <td class="r num"><a href="${esc(m.url)}" target="_blank" rel="noopener" title="${esc(tip)}">${cents(m.ask)}</a></td>
+        <td style="width:45%"><div class="bar"><i style="width:${(p * 100).toFixed(1)}%"></i>${m.ask == null ? "" :
+          `<b class="ask" style="left:${(m.ask * 100).toFixed(1)}%" title="Kalshi ask ${cents(m.ask)} · model ${pct(p)}"></b>`}</div></td></tr>`;
+    }).join("");
+  }
+  $("parts").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-part]");
+    if (!b || !last) return;
+    part = b.dataset.part; store.set("live:part", part); renderLines(last);
+  });
 
   function schedule() {
     clearInterval(timer);

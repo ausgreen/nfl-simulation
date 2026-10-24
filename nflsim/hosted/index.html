@@ -153,26 +153,47 @@ footer { color: var(--ink-3); font-size: 12.5px; }
       || `<span class="muted">No games this week.</span>`;
   }
 
-  let busy = false;  // the local server can take a while to answer
+  // pushed updates from the worker (Server-Sent Events) when it offers them; the page polls only while none arrive
+  const EVENTS = "events";
+  let stream = null, streamAt = 0;
+  function listen(paths, onFile) {
+    if (stream) stream.close();
+    stream = null;
+    if (!window.EventSource) return;
+    stream = new EventSource(`${EVENTS}?only=${encodeURIComponent(paths.join(","))}`);
+    stream.addEventListener("file", (e) => { streamAt = Date.now(); const f = JSON.parse(e.data); onFile(f.path, f.body); });
+    stream.addEventListener("ping", () => { streamAt = Date.now(); });
+  }
+  const streaming = () => Date.now() - streamAt < 40000;  // the worker pings every 15 s
+
+  function show(cards, st) {
+    render(cards);
+    cue(".card");
+    $("updated").textContent = `updated ${new Date().toLocaleTimeString()}`;
+    const behind = st ? (Date.now() - Date.parse(st.updated)) / 1000 : 0;
+    const limit = st ? Math.max(STALE_S, 2.5 * (st.every || 0)) : Infinity;
+    const stats = st && st.data && st.data.stats ? (Date.now() - Date.parse(st.data.stats)) / 1000 : 0;
+    $("stale").hidden = behind <= limit && stats <= STATS_S;
+    $("stale").textContent = behind > limit ? `Updates have paused: the last check of ESPN's feed was ${ago(behind)} ago. Numbers may be out of date.`
+      : `Player stats were last updated ${ago(stats)} ago; pregame numbers may be out of date.`;
+  }
+
+  let busy = false, cards = null, status = null;  // the local server can take a while to answer
   async function refresh() {
-    if (busy) return;
+    if (busy || streaming()) return;
     busy = true;
     try {
-      const [cards, st] = await Promise.all([getJSON(SUMMARY), getJSON("status.json").catch(() => null)]);
-      render(cards);
-      cue(".card");
-      $("updated").textContent = `updated ${new Date().toLocaleTimeString()}`;
-      const behind = st ? (Date.now() - Date.parse(st.updated)) / 1000 : 0;
-      const limit = st ? Math.max(STALE_S, 2.5 * (st.every || 0)) : Infinity;
-      const stats = st && st.data && st.data.stats ? (Date.now() - Date.parse(st.data.stats)) / 1000 : 0;
-      $("stale").hidden = behind <= limit && stats <= STATS_S;
-      $("stale").textContent = behind > limit ? `Updates have paused: the last check of ESPN's feed was ${ago(behind)} ago. Numbers may be out of date.`
-        : `Player stats were last updated ${ago(stats)} ago; pregame numbers may be out of date.`;
+      [cards, status] = await Promise.all([getJSON(SUMMARY), getJSON("status.json").catch(() => null)]);
+      show(cards, status);
     } catch (e) {
       $("updated").innerHTML = `<span class="err">Update failed: ${esc(e.message)}</span>`;
     } finally { busy = false; }
   }
 
+  listen([SUMMARY, "status.json"], (path, body) => {
+    if (path === SUMMARY) cards = body; else status = body;
+    if (cards) show(cards, status);
+  });
   refresh();
   setInterval(refresh, EVERY_S * 1000);
 })();

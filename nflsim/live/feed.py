@@ -10,6 +10,7 @@ from __future__ import annotations
 import bisect
 import gzip
 import json
+import threading
 import time
 import urllib.request
 from pathlib import Path
@@ -38,14 +39,16 @@ class Recorder(Live):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.last: dict[str, str] = {}
+        self.lock = threading.Lock()  # the worker fetches summaries in parallel
 
     def get(self, url: str) -> dict:
         body = fetch(url)
         text = json.dumps(body, separators=(",", ":"), sort_keys=True)
-        if self.last.get(url) != text:
-            self.last[url] = text
-            with gzip.open(self.path, "at", encoding="utf-8") as f:
-                f.write(f'{{"t":{time.time()},"url":{json.dumps(url)},"body":{text}}}\n')
+        with self.lock:
+            if self.last.get(url) != text:
+                self.last[url] = text
+                with gzip.open(self.path, "at", encoding="utf-8") as f:
+                    f.write(f'{{"t":{time.time()},"url":{json.dumps(url)},"body":{text}}}\n')
         return body
 
 

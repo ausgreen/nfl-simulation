@@ -74,8 +74,9 @@ footer p { margin: 0; }
     <span class="beat" id="beat" title="Pulses when new numbers arrive"></span>
   </header>
   <header class="top">
-    <h1>Biggest gaps: QB passing yards</h1>
+    <h1>Biggest gaps: model vs Kalshi</h1>
     <div class="controls">
+      <label>Markets <select id="kind"><option value="yards">QB passing yards</option><option value="scores">Score</option><option value="all">All</option></select></label>
       <label>Games <select id="which"><option value="all">live and upcoming</option><option value="in">live only</option><option value="pre">upcoming only</option></select></label>
       <label>Show <select id="top"><option value="15">top 15</option><option value="30" selected>top 30</option><option value="1000">all</option></select></label>
       <span class="muted" id="updated"></span>
@@ -83,18 +84,20 @@ footer p { margin: 0; }
   </header>
   <section class="panel">
     <table>
-      <thead><tr><th>Game</th><th>QB</th><th class="r">Now</th><th>Bet</th><th class="r">Model</th><th class="r">Price</th>
+      <thead><tr><th>Game</th><th>Market</th><th class="r" title="The QB's yards so far, or the points so far in that part of the game (away–home, total)">Now</th><th>Bet</th><th class="r">Model</th><th class="r">Price</th>
         <th style="width:16%"></th><th class="r" title="Model chance minus the price">Gap</th>
         <th class="r" title="Expected profit per $1 staked, after Kalshi's trading fee">Return</th></tr></thead>
       <tbody id="rows"><tr><td colspan="9" class="muted">Loading…</td></tr></tbody>
     </table>
   </section>
   <footer>
-    <p>Each Kalshi line priced both ways: buying yes at the ask, or no at 1 − the bid (the price to bet the QB stays under).
+    <p>Each Kalshi line priced both ways: buying yes at the ask, or no at 1 − the bid (the price to bet the QB stays under,
+      or against a score market).
       Gap = the model's chance of that side winning minus its price. Return = expected profit per $1, after Kalshi's taker fee
       (7% × price × (1 − price), rounded up to the cent, per contract). Lines already decided (the QB is past them) and games
       that are over are left out; so are prices of 1¢ or 99¢ and up. Dots on the bar and the range under Gap: the likely
-      range of the chance. For information only.</p>
+      range of the chance (passing yards only). Score markets: the game, each half and quarter (quarters don't count
+      overtime; the 2nd half and the game do); a tied game pays half on either team. For information only.</p>
   </footer>
 </div>
 
@@ -132,23 +135,55 @@ footer p { margin: 0; }
     if (changed) restart($("beat"));
   }
 
-  function bets(cards, prices) {
+  // the model's chance of a Kalshi score market, from its simulated points (the card's "scores"; same as the game page)
+  const PARTS = { game: "game", "1H": "1st half", "2H": "2nd half", "1Q": "Q1", "2Q": "Q2", "3Q": "Q3", "4Q": "Q4" };
+  const above = (pmf, x) => pmf[1].reduce((s, p, i) => pmf[0] + i > x ? s + p : s, 0);  // chance of more than x
+  function scoreChance(d, m) {
+    const s = d.scores && d.scores[m.part];
+    if (!s) return null;
+    const home = m.team === d.home, tie = above(s.margin, -0.5) - above(s.margin, 0.5);
+    if (m.kind === "win") return m.team === "TIE" ? tie
+      : (home ? above(s.margin, 0.5) : 1 - above(s.margin, -0.5)) + (m.part === "game" ? tie / 2 : 0);  // a tied game pays half
+    if (m.kind === "spread") return home ? above(s.margin, m.x) : 1 - above(s.margin, -m.x);
+    if (m.kind === "total") return above(s.total, m.x);
+    return above(home ? s.home : s.away, m.x);
+  }
+  const marketLabel = (m) => {
+    const n = m.x == null ? "" : Math.round(m.x + 0.5);
+    return m.kind === "win" ? (m.team === "TIE" ? "Tie" : `${m.team} wins`) : m.kind === "spread" ? `${m.team} by ${n}+`
+      : m.kind === "total" ? `${n}+ points` : `${m.team} scores ${n}+`;
+  };
+
+  // points so far in a part of the game: "3–7 (10)", away first
+  const partNow = (g, k) => {
+    const s = g.scores && g.scores[k];
+    return s && s.now ? `${s.now[1]}–${s.now[0]} <span class="muted">(${s.now[0] + s.now[1]})</span>` : "—";
+  };
+
+  function bets(cards, prices, kind) {
     const out = [];
+    const add = (b, p, ask, bid, lo, hi) => {
+      for (const [side, ps, price, l, h] of [["yes", p, ask, lo, hi],
+                                             ["no", 1 - p, bid == null ? null : 1 - bid, hi == null ? null : 1 - hi, lo == null ? null : 1 - lo]]) {
+        if (price == null || price <= 0.01 || price >= 0.99) continue;
+        out.push({ ...b, side, p: ps, lo: l, hi: h, price, gap: ps - price, ret: ps / (price + fee(price)) - 1 });
+      }
+    };
     for (const g of cards) {
-      if (g.state === "post" || !g.qbs) continue;
+      if (g.state === "post") continue;
+      if (kind !== "yards") for (const m of ((prices[g.event] || {}).scores || [])) {
+        const p = scoreChance(g, m);
+        if (p == null || p <= 0.001 || p >= 0.999) continue;  // decided
+        add({ g, m, key: `${m.part}-${m.kind}-${m.team}-${m.x}` }, p, m.ask, m.bid, null, null);
+      }
+      if (kind === "scores" || !g.qbs) continue;
       for (const q of g.qbs) {
         const m = ((prices[g.event] || {})[q.team] || []).find((x) => nameKey(x.qb) === nameKey(q.qb));
         if (!m) continue;
         for (const l of q.lines || []) {
           const k = m.lines[l.line];
           if (!k || q.yds >= l.line) continue;  // no market, or already decided
-          const sides = [["yes", l.p, k.ask, l.lo, l.hi], ["no", 1 - l.p, k.bid == null ? null : 1 - k.bid,
-                                                            l.hi == null ? null : 1 - l.hi, l.lo == null ? null : 1 - l.lo]];
-          for (const [side, p, price, lo, hi] of sides) {
-            if (price == null || price <= 0.01 || price >= 0.99) continue;
-            const cost = price + fee(price);
-            out.push({ g, q, m, line: l.line, side, p, lo, hi, price, gap: p - price, ret: p / cost - 1 });
-          }
+          add({ g, q, m, line: l.line, key: `${q.team}-${l.line}` }, l.p, k.ask, k.bid, l.lo, l.hi);
         }
       }
     }
@@ -159,11 +194,14 @@ footer p { margin: 0; }
     const g = b.g, live = g.state === "in";
     const when = live ? `<span class="live">LIVE</span> <span class="muted">${esc(g.clock)}</span>` : `<span class="muted">${esc(kickoff(g.kickoff))}</span>`;
     const lo = Math.min(b.p, b.price), hi = Math.max(b.p, b.price);
-    return `<tr data-key="${esc(`${g.event}-${b.q.team}-${b.line}-${b.side}`)}">
+    const market = b.q ? `${esc(b.q.qb)} <span class="muted">${esc(b.q.team)}</span>`
+      : `${esc(marketLabel(b.m))} <span class="muted">${esc(PARTS[b.m.part])}</span>`;
+    const bet = b.q ? (b.side === "yes" ? `${b.line}+ yes` : `under ${b.line} (no)`) : b.side;
+    return `<tr data-key="${esc(`${g.event}-${b.key}-${b.side}`)}">
       <td><a href="${GAME}?event=${encodeURIComponent(g.event)}">${esc(g.away)} @ ${esc(g.home)}</a> ${when}</td>
-      <td>${esc(b.q.qb)} <span class="muted">${esc(b.q.team)}</span></td>
-      <td class="r num">${live ? Math.round(b.q.yds) : "—"}</td>
-      <td><span class="side ${b.side}">${b.side === "yes" ? `${b.line}+ yes` : `under ${b.line} (no)`}</span></td>
+      <td>${market}</td>
+      <td class="r num">${!live ? "—" : b.q ? Math.round(b.q.yds) : partNow(g, b.m.part)}</td>
+      <td><span class="side ${b.side}">${bet}</span></td>
       <td class="r num" title="${b.lo == null ? "" : `likely range ${pct(b.lo)}–${pct(b.hi)}`}">${pct(b.p)}</td>
       <td class="r num"><a href="${esc(b.m.url)}" target="_blank" rel="noopener">${cents(b.price)}</a></td>
       <td><div class="gap" title="model ${pct(b.p)} vs price ${cents(b.price)}"><i style="left:${(lo * 100).toFixed(1)}%;width:${((hi - lo) * 100).toFixed(1)}%"></i><b style="left:${(b.price * 100).toFixed(1)}%"></b>${b.lo == null ? "" : [b.lo, b.hi].map((x) => `<span class="rng" style="left:${(x * 100).toFixed(1)}%"></span>`).join("")}</div></td>
@@ -171,28 +209,50 @@ footer p { margin: 0; }
       <td class="r num">${signed(b.ret * 100)}%</td></tr>`;
   }
 
-  let busy = false;
-  async function refresh() {
-    if (busy) return;
+  // pushed updates from the worker (Server-Sent Events) when it offers them; the page polls only while none arrive
+  const EVENTS = "events";
+  let stream = null, streamAt = 0;
+  function listen(paths, onFile) {
+    if (stream) stream.close();
+    stream = null;
+    if (!window.EventSource) return;
+    stream = new EventSource(`${EVENTS}?only=${encodeURIComponent(paths.join(","))}`);
+    stream.addEventListener("file", (e) => { streamAt = Date.now(); const f = JSON.parse(e.data); onFile(f.path, f.body); });
+    stream.addEventListener("ping", () => { streamAt = Date.now(); });
+  }
+  const streaming = () => Date.now() - streamAt < 40000;  // the worker pings every 15 s
+
+  function show(cards, prices) {
+    const which = $("which").value;
+    const all = bets(cards.filter((g) => which === "all" || g.state === which), prices || {}, $("kind").value);
+    const shown = all.slice(0, Number($("top").value));
+    $("rows").innerHTML = shown.map(row).join("") ||
+      `<tr><td colspan="9" class="muted">No Kalshi prices to compare right now.</td></tr>`;
+    cue("#rows tr");
+    $("updated").textContent = `${all.length} prices · updated ${new Date().toLocaleTimeString()}`;
+  }
+
+  let busy = false, cards = null, prices = null;
+  async function refresh(force) {
+    if (busy || (streaming() && !force)) return;
     busy = true;
     try {
-      const [cards, prices] = await Promise.all([getJSON(SUMMARY), getJSON(KALSHI)]);
-      const which = $("which").value;
-      const all = bets(cards.filter((g) => which === "all" || g.state === which), prices || {});
-      const shown = all.slice(0, Number($("top").value));
-      $("rows").innerHTML = shown.map(row).join("") ||
-        `<tr><td colspan="9" class="muted">No Kalshi prices to compare right now.</td></tr>`;
-      cue("#rows tr");
-      $("updated").textContent = `${all.length} prices · updated ${new Date().toLocaleTimeString()}`;
+      [cards, prices] = await Promise.all([getJSON(SUMMARY), getJSON(KALSHI)]);
+      show(cards, prices);
     } catch (e) {
       $("updated").innerHTML = `<span class="err">Update failed: ${esc(e.message)}</span>`;
     } finally { busy = false; }
   }
 
-  for (const id of ["which", "top"]) {
+  listen([SUMMARY, KALSHI], (path, body) => {
+    if (path === SUMMARY) cards = body; else prices = body;
+    if (cards) show(cards, prices);
+  });
+
+  for (const id of ["kind", "which", "top"]) {
     const saved = store.get("edges:" + id);
     if (saved && [...$(id).options].some((o) => o.value === saved)) $(id).value = saved;
-    $(id).addEventListener("change", () => { store.set("edges:" + id, $(id).value); refresh(); });
+    $(id).addEventListener("change", () => { store.set("edges:" + id, $(id).value); cards ? show(cards, prices) : refresh(true); });
   }
   refresh();
   setInterval(refresh, EVERY_S * 1000);

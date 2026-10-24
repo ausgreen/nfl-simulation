@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 import numpy as np
@@ -90,10 +91,25 @@ def cmd_worker(ds, a):
     else:
         pub = LocalDir(a.out)
         print(f"publishing to {a.out}/ (serve it: python -m http.server -d {a.out} 8000)")
-    from . import kalshi
+    import threading
 
-    w = Worker(ds, pub, every=a.every, only=set(a.game) if a.game else None,
-               prices=None if a.replay else kalshi.live_prices,
+    from . import kalshi_ws
+
+    if a.serve is not None:
+        from .hosted.push import Hub, Tee
+
+        hub = Hub(a.serve, root=a.out if a.publish == "local" else None, host=a.host,
+                  allow_origin=a.events_origin).start()
+        pub = Tee(pub, hub)
+        print(f"pushing updates on http://{a.host}:{hub.port}/events" +
+              (f" (pages: http://{a.host}:{hub.port}/)" if a.publish == "local" else ""))
+    wake = threading.Event()  # a jump in a game's Kalshi market: read the feed now
+    prices = None
+    if not a.replay:
+        prices, _ = kalshi_ws.price_source(log=ds.data_dir / "live" / "kalshi_ws", on_move=lambda ticker: wake.set())
+    procs = a.procs if a.procs is not None else min(8, os.cpu_count() or 1)
+    print(f"simulating in {procs} process{'es' if procs > 1 else ''}")
+    w = Worker(ds, pub, every=a.every, only=set(a.game) if a.game else None, prices=prices, procs=procs, wake=wake,
                history=None if a.replay else ds.data_dir / "live" / "history",
                refresh=None if a.replay else lambda: _refresh_data(ds), preds_every=None if a.replay else 3 * 3600.0)
     if a.once:
@@ -114,6 +130,12 @@ def _refresh_data(ds):
 
 
 def cmd_feed(ds, a):
+    if a.action == "race":
+        from . import race
+
+        print(f"recording every fast source to {a.path} (Ctrl-C to stop)")
+        race.record(a.path, hours=a.hours)
+        return
     from .live import feed
 
     feed.record(a.path, every=a.every, hours=a.hours, once=a.once)
@@ -151,10 +173,17 @@ def main(argv=None) -> None:
     s.add_argument("--record", help="also save the live feed to this recording")
     s.add_argument("--game", action="append", help="only this ESPN event id (repeatable)")
     s.add_argument("--once", action="store_true", help="one tick, then stop")
+    s.add_argument("--procs", type=int, help="simulation processes (default: one per CPU, up to 8)")
+    s.add_argument("--serve", type=int, metavar="PORT",
+                   help="push every update to open pages on this port (/events); with --publish local, also serve "
+                        "the pages there")
+    s.add_argument("--host", default="127.0.0.1", help="with --serve: address to listen on")
+    s.add_argument("--events-origin", help="with --serve: the pages' origin, when /events is on another host")
     s.set_defaults(fn=cmd_worker)
 
-    s = sub.add_parser("feed", help="record the ESPN feed (scoreboard + changed games' summaries) for replay")
-    s.add_argument("action", choices=["record"])
+    s = sub.add_parser("feed", help="record the ESPN feed (scoreboard + changed games' summaries) for replay; "
+                                    "race: every fast source side by side, to time them (needs the kalshi extra)")
+    s.add_argument("action", choices=["record", "race"])
     s.add_argument("path", help="recording file, e.g. recordings/2026-10-12.jsonl.gz (appended to)")
     s.add_argument("--every", type=float, default=5.0, help="seconds between scoreboard polls")
     s.add_argument("--hours", type=float, help="stop after this many hours (default: until Ctrl-C)")

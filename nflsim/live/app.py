@@ -10,8 +10,9 @@ score (a team ahead has had it), so a tied overtime is treated as if neither had
 Stdlib HTTP server, local only. Endpoints: / (every game at a glance, `hosted/index.html`), /game?event=<id>
 (one game's page), /edges (model vs Kalshi, `hosted/edges.html`), /api/games, /api/state?event=<id>[&overrides], /api/sig?event=<id>
 (the game's play and box-score signature, no simulation; the page re-requests the state when it changes),
-/api/summary (the home page's cards: `summary` of each game's state), /api/kalshi (Kalshi's passing-yard prices for
-this week's games, kalshi.live_prices; re-fetched after 5 s).
+/api/summary (the home page's cards: `summary` of each game's state), /api/kalshi (Kalshi's prices for this week's
+games, kalshi.live_prices: from Kalshi's WebSocket when a key is set up, kalshi_ws.price_source, re-read after 1 s; else
+polled after 5 s).
 Overrides (any subset): pos=home|away, down, togo, yl (yards to the goal), clock (game seconds left), margin
 (home - away), kick=1 (a kickoff is next; pos = receiving team), yds_home, yds_away.
 """
@@ -99,6 +100,42 @@ def quarter_rows(s: dict, clock: float, qpts: np.ndarray | None) -> list[dict]:
                      "away": float(a.mean()), "homeWin": float(np.mean(h > a)), "awayWin": float(np.mean(a > h)),
                      "tie": float(np.mean(h == a))})
     return rows
+
+
+def _pmf(v: np.ndarray) -> list:
+    """[lowest value, chance of each whole number from there up] of simulated points (or margins)."""
+    v = np.rint(v).astype(int)
+    lo = int(v.min())
+    return [lo, [round(float(p), 4) for p in np.bincount(v - lo) / len(v)]]
+
+
+def score_chances(s: dict, clock: float, pts: np.ndarray, qpts: np.ndarray | None) -> dict:
+    """The simulated final points of each part of the game, for pricing Kalshi's score markets (kalshi.SCORE_SERIES):
+    {part: {"margin" (home − away), "total"[, "home", "away"]: _pmf, "now": [home, away] points so far}} for the game,
+    each regulation quarter (1Q..4Q) and half; the 2nd half and the game count overtime. `pts`: (n, 2) points still to come; `qpts`: (n, 4, 2), per
+    quarter (None: no simulated quarter is left, as in overtime or after the game)."""
+    ls = s.get("linescores") or [[], []]
+    n = len(pts)
+    q = np.zeros((n, 4, 2))
+    for t in (0, 1):
+        q[:, :len(ls[t][:4]), t] = ls[t][:4]
+    if qpts is not None:
+        cur = {"pre": 0}.get(s["status"], min(4, int((3600 - clock) // 900) + 1))
+        for i in range(max(cur, 1) - 1, 4):
+            q[:, i] = (q[:, i] if i + 1 == cur else 0.0) + qpts[:, i]
+    final = np.array([s["home_score"], s["away_score"]], dtype=float) + pts
+    first = q[:, :2].sum(1)
+    parts = {"game": final, "1H": first, "2H": final - first, **{f"{i + 1}Q": q[:, i] for i in range(4)}}
+    done = np.zeros((4, 2))  # points so far in each quarter (the current one included)
+    for t in (0, 1):
+        done[:len(ls[t][:4]), t] = ls[t][:4]
+    score = np.array([s["home_score"], s["away_score"]], dtype=float)
+    now = {"game": score, "1H": done[:2].sum(0), "2H": score - done[:2].sum(0), **{f"{i + 1}Q": done[i] for i in range(4)}}
+    out = {}
+    for k, v in parts.items():
+        out[k] = {"margin": _pmf(v[:, 0] - v[:, 1]), "total": _pmf(v.sum(1)), "now": [float(x) for x in now[k]]}
+    out["game"].update(home=_pmf(final[:, 0]), away=_pmf(final[:, 1]))
+    return out
 
 
 def clock_text(clock: float, s: dict | None = None) -> str:
@@ -364,13 +401,14 @@ class LiveModel:
                 "mix": [{"event": e, "prob": float(p)} for e, p in mix.head(6).items()],
                 "qbs": qb, "homeWin": home_win, "final": final,
                 "quarters": quarter_rows(s, st["clock"], None if s["status"] == "post" or ot else full_q[0]),
+                "scores": score_chances(s, st["clock"], full_p[0], None if s["status"] == "post" or ot else full_q[0]),
                 "line": {"spread": _f(an.get("spread")), "total": _f(an.get("total"))},
                 "raw": {k2: (_f(v) if isinstance(v, (float, np.floating)) else (bool(v) if isinstance(v, (bool, np.bool_)) else v))
                         for k2, v in st.items()}}
 
 
 CARD = ("event", "home", "away", "status", "clock", "score", "now", "ball", "lastPlay", "homeWin", "final", "line",
-        "overtime", "feedTime")
+        "overtime", "feedTime", "scores")
 
 
 def summary(out: dict | None, game: dict) -> dict:
@@ -402,7 +440,10 @@ def _f(v):
 
 def serve(port: int = 8765, ds: Dataset | None = None) -> None:
     model = LiveModel(ds or load())
-    prices = {"at": 0.0, "data": {}}
+    from .. import kalshi_ws
+
+    source, book = kalshi_ws.price_source()
+    prices = {"at": 0.0, "data": {}, "every": 1.0 if book else 5.0}
 
     class Handler(BaseHTTPRequestHandler):
         def _send(self, code, body, ctype="application/json"):
@@ -441,8 +482,8 @@ def serve(port: int = 8765, ds: Dataset | None = None) -> None:
                             cards.append(summary(None, g))
                     self._send(200, cards)
                 elif u.path == "/api/kalshi":
-                    if time.monotonic() - prices["at"] > 5:
-                        prices.update(at=time.monotonic(), data=kalshi.live_prices(espn.games()))
+                    if time.monotonic() - prices["at"] > prices["every"]:
+                        prices.update(at=time.monotonic(), data=source(espn.games()))
                     self._send(200, prices["data"])
                 elif u.path == "/api/sig":
                     if not q.get("event"):
