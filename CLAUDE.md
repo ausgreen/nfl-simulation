@@ -63,8 +63,9 @@ calibration) -> vectorized simulation from any game state -> CLI replay or live 
   (every 2 s while a game is in progress, `live_every`; sooner when `wake` is set, which a jump in a game's Kalshi
   market does), fetches the changed games' summaries in parallel, and re-simulates a game when `espn.signature`
   changes, or when its box score (`espn.box`, re-read every 4 s while the game is in progress) catches up with a
-  play (pregame: hourly), in `procs` spawned processes (`--procs`, default one per CPU; each holds its own LiveModel,
-  restarted when the expectations or data change), publishing each game as its simulation finishes. It publishes `games.json`, `state/<event>.json`, `status.json` (heartbeat + per-game errors), `kalshi.json` (Kalshi's
+  play (pregame: hourly), in `procs` spawned processes (`--procs`, default one per CPU; each holds its own LiveModel and
+  always gets the same games, so it anchors each once; changed expectations are forgotten per game
+  (`_child_forget`), a data refresh restarts them), publishing each game as its simulation finishes. It publishes `games.json`, `state/<event>.json`, `status.json` (heartbeat + per-game errors), `kalshi.json` (Kalshi's
   passing-yard prices and its game/half/quarter winner, spread and total markets, `kalshi.live_prices`, every tick; not
   in replays. The prices come from `kalshi_ws.Book`, kept current by Kalshi's WebSocket and logging every message to
   `data/live/kalshi_ws/<UTC date>.jsonl.gz`, when a key is set up (`kalshi_ws.price_source`); else from REST, which

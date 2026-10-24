@@ -8,6 +8,7 @@ data/live/sim_setup_<season>.pkl, keyed by the simulator's code and the play-by-
 from __future__ import annotations
 
 import hashlib
+import os
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
@@ -94,10 +95,12 @@ def season_setup(ds: Dataset, season: int, starters: dict | None = None, cache: 
         setup.noise = TM.noise_scales(tb, setup.to_mult, starts, tg, jac)
     else:  # no walk-forward expectations on disk: typical values from reports 21 (2023-26)
         setup.noise = {"tau2": 0.10, "form_sd": 0.18, "delta_sd": 0.0}
-    if cache:
+    if cache:  # written whole then renamed: the worker's simulation processes may be reading it
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "wb") as f:
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+        with open(tmp, "wb") as f:
             pickle.dump((key, setup), f)
+        os.replace(tmp, path)
     return setup
 
 

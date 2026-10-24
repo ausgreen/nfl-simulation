@@ -111,6 +111,7 @@ and `https://nfl.austingreen.net/status.json` (after the login): `updated` is re
 | Starter change | edit `data/curated/roster.csv`, `deploy/push.sh`, then delete the week's cached predictions (below), which picked the old starter |
 | Give someone access | add their email to the Access policy |
 | New R2 keys | edit `/opt/nflsim/.env` on the server, `docker compose up -d` |
+| Kalshi's live prices | the private key at `/opt/nflsim/secrets/kalshi.pem` (mode 600; mounted read-only at `/run/secrets`, never synced by `push.sh`), and `KALSHI_API_KEY_ID` + `KALSHI_PRIVATE_KEY_PATH=/run/secrets/kalshi.pem` in `/opt/nflsim/.env`; without them the worker polls Kalshi's REST endpoint |
 
 Until the weekly refresh (phase 4) exists, the server's data is whatever was in `data/` at the last push. Lines and
 starters for a new week come from `schedules.csv`, so run `uv run nflsim fetch --since 2026` and `deploy/push.sh`

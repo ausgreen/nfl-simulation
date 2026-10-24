@@ -8,3 +8,4 @@ __pycache__/
 recordings/
 site/
 data/live/
+secrets/

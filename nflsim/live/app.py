@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import threading
 import time
 import traceback
@@ -184,8 +185,7 @@ class LiveModel:
                 p = pd.read_parquet(path)
             else:
                 p = self.compute_preds(season, week)
-                path.parent.mkdir(parents=True, exist_ok=True)
-                p.to_parquet(path, index=False)
+                _write_parquet(p, path)
             self.week_preds[key] = p.set_index("team")
         return self.week_preds[key]
 
@@ -202,7 +202,7 @@ class LiveModel:
                        for t in merged.index if t not in keep.index
                        and (t not in old.index or abs(old.loc[t, "mu"] - merged.loc[t, "mu"]) > 0.05
                             or old.loc[t, "player_id"] != merged.loc[t, "player_id"])}
-            merged.reset_index().to_parquet(self._preds_path(season, week), index=False)
+            _write_parquet(merged.reset_index(), self._preds_path(season, week))
             self.week_preds[(season, week)] = merged
             for gid in {merged.loc[t, "game_id"] for t in changed}:
                 self.params.pop(gid, None)
@@ -419,6 +419,14 @@ def summary(out: dict | None, game: dict) -> dict:
         card["qbs"] = [{k: q[k] for k in ("team", "qb", "yds", "out", "mu", "median", "p10", "p90", "lines")}
                        for q in out["qbs"]]
     return card
+
+
+def _write_parquet(df: pd.DataFrame, path: Path) -> None:
+    """Written whole then renamed: the worker's simulation processes may be reading it."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    df.to_parquet(tmp, index=False)
+    os.replace(tmp, path)
 
 
 def _local(page: Path) -> bytes:

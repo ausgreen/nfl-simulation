@@ -8,9 +8,9 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never PYTHONUNBU
 
 # dependencies first, so code-only changes reuse this layer
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --extra hosted --no-install-project
+RUN uv sync --frozen --no-dev --extra hosted --extra kalshi --no-install-project
 COPY nflsim ./nflsim
-RUN uv sync --frozen --no-dev --extra hosted
+RUN uv sync --frozen --no-dev --extra hosted --extra kalshi
 
 # data/ (~230 MB, mostly the weather archive). data/live/ is the Fly volume at run time, so the one file in it that
 # has no generator is kept aside and copied onto the volume by the entrypoint.

@@ -104,7 +104,8 @@ class Worker:
     interval: float = 0.0  # seconds until the next tick, set by tick()
     procs: int = 1  # simulation processes (1: in this one)
     wake: threading.Event = field(default_factory=threading.Event)  # set it to tick now (e.g. a market moved)
-    _pool: object = None
+    _lanes: list = field(default_factory=list)  # one single-process executor per simulation process
+    _lane_of: dict = field(default_factory=dict)  # event -> lane: a game is always simulated in the same process
 
     def __post_init__(self):
         self.model = self.model or LiveModel(self.ds)
@@ -204,12 +205,13 @@ class Worker:
                 if isinstance(fresh, Exception):
                     self.log(f"projections {season} week {week} failed: {type(fresh).__name__}: {fresh}")
                     continue
-                changed |= self.model.update_preds(season, week, fresh, frozen)
+                week_changed = self.model.update_preds(season, week, fresh, frozen)
+                if week_changed:
+                    self._forget(season, week, sorted(week_changed))
+                changed |= week_changed
             self.projected = wall
             moved = [f"{t} {a:.0f}->{b:.0f}" for t, (a, b) in sorted(changed.items()) if a is None or abs(a - b) >= 1]
             self.log(f"projections: {', '.join(moved) if moved else 'no change'}")
-            if changed:
-                self._restart_pool()  # its processes re-read the expectations
             for g in games:
                 if g["state"] == "pre" and (g["home"] in changed or g["away"] in changed):
                     self.games.setdefault(g["event"], GameTrack()).sig = None
@@ -236,18 +238,25 @@ class Worker:
     # --- simulation: in this process, or in `procs` processes ---------------------------------------------------
 
     def _restart_pool(self, terminate: bool = False) -> None:
-        """New processes after the model changed (they hold their own copy of it); `terminate`: stop them now,
+        """New processes after the data changed (they hold their own model); `terminate`: stop them now,
         mid-simulation (on exit: otherwise Python waits for the running ones to finish)."""
-        if self._pool is not None:
-            procs = list(getattr(self._pool, "_processes", {}).values()) if terminate else []
-            self._pool.shutdown(wait=False, cancel_futures=True)
+        for lane in self._lanes:
+            procs = list(getattr(lane, "_processes", {}).values()) if terminate else []
+            lane.shutdown(wait=False, cancel_futures=True)
             for p in procs:
                 p.terminate()
-            self._pool = None
+        self._lanes = []
+
+    def _forget(self, season: int, week: int, teams: list[str]) -> None:
+        """The week's expectations changed for `teams`: each process re-reads them and re-anchors those games (the
+        call is queued behind its current simulation, so the next one sees the change)."""
+        for lane in self._lanes:
+            lane.submit(_child_forget, season, week, teams)
 
     def _computed(self, states: list[dict]):
-        """(index, state or exception, seconds) for each game state, as each simulation finishes."""
-        if self.procs <= 1 or len(states) <= 1 and self._pool is None:
+        """(index, state or exception, seconds) for each game state, as each simulation finishes. With several
+        processes each game always goes to the same one, which anchors it once (~15 s) and keeps it."""
+        if self.procs <= 1:
             for i, s in enumerate(states):
                 started = time.perf_counter()
                 try:
@@ -255,15 +264,21 @@ class Worker:
                 except Exception as e:
                     yield i, e, time.perf_counter() - started
             return
-        if self._pool is None:
-            import multiprocessing
-            from concurrent.futures import ProcessPoolExecutor
+        import multiprocessing
+        from concurrent.futures import ProcessPoolExecutor, as_completed
 
-            self._pool = ProcessPoolExecutor(self.procs, mp_context=multiprocessing.get_context("spawn"),
-                                             initializer=_child_init, initargs=(str(self.ds.data_dir),))
-        from concurrent.futures import as_completed
-
-        futures = {self._pool.submit(_child_compute, s): i for i, s in enumerate(states)}
+        for season in {s["season"] for s in states}:  # built (and cached on disk) here once, not in every process
+            self.model.setup(season)
+        for season, week in {(s["season"], s["week"]) for s in states}:
+            self.model.preds(season, week)
+        if not self._lanes:
+            ctx = multiprocessing.get_context("spawn")
+            self._lanes = [ProcessPoolExecutor(1, mp_context=ctx, initializer=_child_init,
+                                               initargs=(str(self.ds.data_dir),)) for _ in range(self.procs)]
+        futures = {}
+        for i, s in enumerate(states):
+            lane = self._lane_of.setdefault(s["event"], len(self._lane_of) % self.procs)
+            futures[self._lanes[lane].submit(_child_compute, s)] = i
         for f in as_completed(futures):
             try:
                 out, secs = f.result()
@@ -397,6 +412,14 @@ def _child_init(data_dir: str) -> None:
     from ..data import load
 
     _MODEL = LiveModel(load(data_dir))
+
+
+def _child_forget(season: int, week: int, teams: list[str]) -> None:
+    with _MODEL.lock:
+        _MODEL.week_preds.pop((season, week), None)
+        prefix = f"{season}_{week:02d}_"
+        for gid in [g for g in _MODEL.params if g.startswith(prefix) and set(g[len(prefix):].split("_")) & set(teams)]:
+            _MODEL.params.pop(gid)
 
 
 def _child_compute(s: dict) -> tuple[dict, float]:

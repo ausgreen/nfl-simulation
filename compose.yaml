@@ -4,9 +4,10 @@ services:
     build: .
     image: nflsim-worker
     restart: unless-stopped
-    env_file: .env                  # R2_BUCKET, R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
+    env_file: .env                  # R2_*, and KALSHI_API_KEY_ID + KALSHI_PRIVATE_KEY_PATH=/run/secrets/kalshi.pem
     volumes:
       - ./data/live:/app/data/live  # caches (simulator set-up, week predictions) survive rebuilds
+      - ./secrets:/run/secrets:ro   # kalshi.pem (Kalshi's WebSocket feed); never synced from the laptop
     logging:
       driver: json-file
       options: {max-size: "10m", max-file: "5"}

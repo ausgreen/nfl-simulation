@@ -313,10 +313,24 @@ def test_simulation_processes_publish_the_same_states(tmp_path, model, replay):
         assert two.tick() == 2
         rp.advance(5)
         assert two.tick() == 0  # nothing changed: nothing simulated, the processes stay up
-        assert two._pool is not None
+        assert len(two._lanes) == 2 and sorted(two._lane_of.values()) == [0, 1]  # one game in each
     finally:
         two._restart_pool()
     for ev in (PRE, POST):
         a = json.loads((tmp_path / "one" / "site" / "state" / f"{ev}.json").read_text())
         b = json.loads((tmp_path / "two" / "site" / "state" / f"{ev}.json").read_text())
         assert a == b
+
+
+def test_a_simulation_process_forgets_only_the_changed_games(monkeypatch):
+    import threading
+    from types import SimpleNamespace
+
+    from nflsim.hosted import worker as W
+
+    m = SimpleNamespace(lock=threading.RLock(), week_preds={(2026, 8): "old", (2026, 7): "keep"},
+                        params={"2026_08_SF_ATL": 1, "2026_08_GB_DET": 2, "2026_07_SF_KC": 3})
+    monkeypatch.setattr(W, "_MODEL", m)
+    W._child_forget(2026, 8, ["ATL"])
+    assert m.week_preds == {(2026, 7): "keep"}
+    assert m.params == {"2026_08_GB_DET": 2, "2026_07_SF_KC": 3}
