@@ -3,7 +3,8 @@
 
     index.html          every game at a glance, live games first (the home page)
     game.html           one game (`?event=<id>`; no corrections)
-    edges.html          the model's passing-yard chances vs Kalshi's prices (summary.json + kalshi.json)
+    edges.html          the model's chances vs Kalshi's prices (summary.json + kalshi.json)
+    watch.html          the viewer's watched lines and positions (kept in their browser; summary.json + kalshi.json)
     summary.json        its cards (live.app.summary of each game's last computed state)
     games.json          this week's games (espn.games)
     state/<event>.json  LiveModel.compute_state for the game, from ESPN's feed as is
@@ -53,6 +54,7 @@ from .publish import max_age
 PAGE = Path(__file__).with_name("index.html")
 GAME_PAGE = Path(__file__).with_name("game.html")
 EDGES_PAGE = Path(__file__).with_name("edges.html")
+WATCH_PAGE = Path(__file__).with_name("watch.html")
 
 
 def _iso(t: float) -> str:
@@ -155,6 +157,7 @@ class Worker:
         self.put("index.html", PAGE.read_bytes(), "text/html; charset=utf-8")
         self.put("game.html", GAME_PAGE.read_bytes(), "text/html; charset=utf-8")
         self.put("edges.html", EDGES_PAGE.read_bytes(), "text/html; charset=utf-8")
+        self.put("watch.html", WATCH_PAGE.read_bytes(), "text/html; charset=utf-8")
         sb = espn.scoreboard()
         for g in self._games(sb):
             try:

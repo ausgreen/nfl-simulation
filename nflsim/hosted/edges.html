@@ -62,6 +62,9 @@ td.r, th.r { text-align: right; }
 .rng-key { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ink); margin: 0 2px 1px 0; }
 .gap b { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--warn); }
 .err { color: var(--warn); }
+button.watch { font: inherit; font-size: 12px; color: var(--ink-2); background: none; border: 1px solid var(--rule); border-radius: 999px;
+  padding: 1px 8px; cursor: pointer; }
+button.watch[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); font-weight: 600; }
 footer { color: var(--ink-3); font-size: 12.5px; display: grid; gap: 6px; }
 footer p { margin: 0; }
 </style>
@@ -70,7 +73,7 @@ footer p { margin: 0; }
 <div class="app">
   <header class="site">
     <span class="brand">Live Game Companion</span>
-    <nav class="tabs" aria-label="Pages"><a href="./">All games</a><a href="game.html">Game</a><a href="edges.html" aria-current="page">Model vs Kalshi</a></nav>
+    <nav class="tabs" aria-label="Pages"><a href="./">All games</a><a href="game.html">Game</a><a href="edges.html" aria-current="page">Model vs Kalshi</a><a href="watch.html">Watch list</a></nav>
     <span class="beat" id="beat" title="Pulses when new numbers arrive"></span>
   </header>
   <header class="top">
@@ -86,8 +89,8 @@ footer p { margin: 0; }
     <table>
       <thead><tr><th>Game</th><th>Market</th><th class="r" title="The QB's yards so far, or the points so far in that part of the game (away–home, total)">Now</th><th>Bet</th><th class="r">Model</th><th class="r">Price</th>
         <th style="width:16%"></th><th class="r" title="Model chance minus the price">Gap</th>
-        <th class="r" title="Expected profit per $1 staked, after Kalshi's trading fee">Return</th></tr></thead>
-      <tbody id="rows"><tr><td colspan="9" class="muted">Loading…</td></tr></tbody>
+        <th class="r" title="Expected profit per $1 staked, after Kalshi's trading fee">Return</th><th></th></tr></thead>
+      <tbody id="rows"><tr><td colspan="10" class="muted">Loading…</td></tr></tbody>
     </table>
   </section>
   <footer>
@@ -96,7 +99,7 @@ footer p { margin: 0; }
       Gap = the model's chance of that side winning minus its price. Return = expected profit per $1, after Kalshi's taker fee
       (7% × price × (1 − price), rounded up to the cent, per contract). Lines already decided (the QB is past them) and games
       that are over are left out; so are prices of 1¢ or 99¢ and up. Dots on the bar and the range under Gap: the likely
-      range of the chance (passing yards only). Score markets: the game, each half and quarter (quarters don't count
+      range of the chance (the model's chance with the QBs' form at its low and high end). Score markets: the game, each half and quarter (quarters don't count
       overtime; the 2nd half and the game do); a tied game pays half on either team. For information only.</p>
   </footer>
 </div>
@@ -137,9 +140,9 @@ footer p { margin: 0; }
 
   // the model's chance of a Kalshi score market, from its simulated points (the card's "scores"; same as the game page)
   const PARTS = { game: "game", "1H": "1st half", "2H": "2nd half", "1Q": "Q1", "2Q": "Q2", "3Q": "Q3", "4Q": "Q4" };
-  const above = (pmf, x) => pmf[1].reduce((s, p, i) => pmf[0] + i > x ? s + p : s, 0);  // chance of more than x
-  function scoreChance(d, m) {
-    const s = d.scores && d.scores[m.part];
+  // chance of more than x: [lowest value, counts from there up, games simulated] (older states: chances, no total)
+  const above = (pmf, x) => pmf[1].reduce((s, p, i) => pmf[0] + i > x ? s + p : s, 0) / (pmf[2] || 1);
+  function scoreChance(d, m, s = d.scores && d.scores[m.part]) {
     if (!s) return null;
     const home = m.team === d.home, tie = above(s.margin, -0.5) - above(s.margin, 0.5);
     if (m.kind === "win") return m.team === "TIE" ? tie
@@ -147,6 +150,16 @@ footer p { margin: 0; }
     if (m.kind === "spread") return home ? above(s.margin, m.x) : 1 - above(s.margin, -m.x);
     if (m.kind === "total") return above(s.total, m.x);
     return above(home ? s.home : s.away, m.x);
+  }
+  // the chance's likely range: priced with both QBs' form at its low and at its high end (spreads and winners:
+  // one QB high and the other low), as the passing-yard dots are
+  function scoreRange(d, m) {
+    const s = d.scores && d.scores[m.part];
+    if (!s || !s.margin_band) return null;
+    const at = (i) => ({ margin: s.margin_band[i], total: s.total_band[i],
+                         home: s.home_band && s.home_band[i], away: s.away_band && s.away_band[i] });
+    const a = scoreChance(d, m, at(0)), b = scoreChance(d, m, at(1));
+    return [Math.min(a, b), Math.max(a, b)];
   }
   const marketLabel = (m) => {
     const n = m.x == null ? "" : Math.round(m.x + 0.5);
@@ -174,7 +187,8 @@ footer p { margin: 0; }
       if (kind !== "yards") for (const m of ((prices[g.event] || {}).scores || [])) {
         const p = scoreChance(g, m);
         if (p == null || p <= 0.001 || p >= 0.999) continue;  // decided
-        add({ g, m, key: `${m.part}-${m.kind}-${m.team}-${m.x}` }, p, m.ask, m.bid, null, null);
+        const r = scoreRange(g, m);
+        add({ g, m, key: `${m.part}-${m.kind}-${m.team}-${m.x}` }, p, m.ask, m.bid, r && r[0], r && r[1]);
       }
       if (kind === "scores" || !g.qbs) continue;
       for (const q of g.qbs) {
@@ -206,8 +220,30 @@ footer p { margin: 0; }
       <td class="r num"><a href="${esc(b.m.url)}" target="_blank" rel="noopener">${cents(b.price)}</a></td>
       <td><div class="gap" title="model ${pct(b.p)} vs price ${cents(b.price)}"><i style="left:${(lo * 100).toFixed(1)}%;width:${((hi - lo) * 100).toFixed(1)}%"></i><b style="left:${(b.price * 100).toFixed(1)}%"></b>${b.lo == null ? "" : [b.lo, b.hi].map((x) => `<span class="rng" style="left:${(x * 100).toFixed(1)}%"></span>`).join("")}</div></td>
       <td class="r num">${signed(b.gap * 100)} pts${b.lo == null ? "" : `<br><span class="muted" style="font-size:11.5px">${signed((b.lo - b.price) * 100)} to ${signed((b.hi - b.price) * 100)}</span>`}</td>
-      <td class="r num">${signed(b.ret * 100)}%</td></tr>`;
+      <td class="r num">${signed(b.ret * 100)}%</td><td>${watchButton(entryOf(b))}</td></tr>`;
   }
+  const entryOf = (b) => ({ side: b.side, ...(b.q ? { t: (b.m.lines[b.line] || {}).ticker, ev: b.g.event, type: "yards", team: b.q.team, qb: b.q.qb, line: b.line }
+    : { t: b.m.ticker, ev: b.g.event, type: "score", part: b.m.part, kind: b.m.kind, team: b.m.team, x: b.m.x, label: marketLabel(b.m) }) });
+
+  // the viewer's watch list, kept in this browser only (the Watch list page reads it): [{t: ticker, ev, type, ...}]
+  const WATCH_KEY = "nflsim:watch";
+  const watchStore = {
+    all() { try { return JSON.parse(localStorage.getItem(WATCH_KEY)) || []; } catch { return []; } },
+    save(list) { try { localStorage.setItem(WATCH_KEY, JSON.stringify(list)); } catch {} },
+    has(t) { return this.all().some((e) => e.t === t); },
+    toggle(entry) {
+      const list = this.all(), i = list.findIndex((e) => e.t === entry.t);
+      if (i >= 0) list.splice(i, 1); else list.push({ side: "yes", ...entry, n: null, paid: null, added: Date.now() });
+      this.save(list);
+    },
+  };
+  const watchButton = (entry) => entry.t ? `<button type="button" class="watch" data-entry="${esc(JSON.stringify(entry))}" aria-pressed="${watchStore.has(entry.t)}">${watchStore.has(entry.t) ? "Watching" : "Watch"}</button>` : "";
+  $("rows").addEventListener("click", (e) => {
+    const b = e.target.closest("button.watch");
+    if (!b) return;
+    watchStore.toggle(JSON.parse(b.dataset.entry));
+    if (cards) show(cards, prices);
+  });
 
   // pushed updates from the worker (Server-Sent Events) when it offers them; the page polls only while none arrive
   const EVENTS = "events";
@@ -227,7 +263,7 @@ footer p { margin: 0; }
     const all = bets(cards.filter((g) => which === "all" || g.state === which), prices || {}, $("kind").value);
     const shown = all.slice(0, Number($("top").value));
     $("rows").innerHTML = shown.map(row).join("") ||
-      `<tr><td colspan="9" class="muted">No Kalshi prices to compare right now.</td></tr>`;
+      `<tr><td colspan="10" class="muted">No Kalshi prices to compare right now.</td></tr>`;
     cue("#rows tr");
     $("updated").textContent = `${all.length} prices · updated ${new Date().toLocaleTimeString()}`;
   }

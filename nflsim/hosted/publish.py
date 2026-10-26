@@ -14,7 +14,8 @@ from collections.abc import Mapping
 from pathlib import Path
 
 # cache time per published path (first matching prefix wins)
-MAX_AGE = (("state/", 3), ("games.json", 3), ("status.json", 0), ("kalshi.json", 3), ("summary.json", 3), ("game.html", 300), ("edges.html", 300), ("index.html", 300))
+MAX_AGE = (("state/", 3), ("games.json", 3), ("status.json", 0), ("kalshi.json", 3), ("summary.json", 3), ("game.html", 300), ("edges.html", 300), ("watch.html", 300),
+           ("index.html", 300))
 
 
 def max_age(path: str) -> int:

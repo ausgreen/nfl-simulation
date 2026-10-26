@@ -39,7 +39,8 @@ from . import espn
 
 TEMPLATE = Path(__file__).with_name("live_template.html")
 HOME = Path(__file__).parent.parent / "hosted" / "index.html"  # every game at a glance
-EDGES = HOME.with_name("edges.html")  # the model vs Kalshi's passing-yard prices, largest gaps first
+EDGES = HOME.with_name("edges.html")  # the model vs Kalshi's prices, largest gaps first
+WATCH = HOME.with_name("watch.html")  # the viewer's watched lines and positions (kept in their browser)
 LINES = list(range(100, 401, 25))  # the page shows 150-350, plus any other line Kalshi lists
 N_NEXT, N_DRIVE, N_GAME = 20000, 10000, 4000
 # each line's range: the chance with the QB's form fixed at the 10th and 90th percentile of its (in-game) posterior
@@ -104,38 +105,52 @@ def quarter_rows(s: dict, clock: float, qpts: np.ndarray | None) -> list[dict]:
 
 
 def _pmf(v: np.ndarray) -> list:
-    """[lowest value, chance of each whole number from there up] of simulated points (or margins)."""
+    """[lowest value, how many simulated games ended on each whole number from there up, games simulated] of
+    simulated points (or margins); the chance of a value is its count / the last number."""
     v = np.rint(v).astype(int)
     lo = int(v.min())
-    return [lo, [round(float(p), 4) for p in np.bincount(v - lo) / len(v)]]
+    return [lo, [int(c) for c in np.bincount(v - lo)], len(v)]
 
 
-def score_chances(s: dict, clock: float, pts: np.ndarray, qpts: np.ndarray | None) -> dict:
+def score_chances(s: dict, clock: float, pts: np.ndarray, qpts: np.ndarray | None, bands: dict | None = None) -> dict:
     """The simulated final points of each part of the game, for pricing Kalshi's score markets (kalshi.SCORE_SERIES):
     {part: {"margin" (home − away), "total"[, "home", "away"]: _pmf, "now": [home, away] points so far}} for the game,
-    each regulation quarter (1Q..4Q) and half; the 2nd half and the game count overtime. `pts`: (n, 2) points still to come; `qpts`: (n, 4, 2), per
-    quarter (None: no simulated quarter is left, as in overtime or after the game)."""
+    each regulation quarter (1Q..4Q) and half; the 2nd half and the game count overtime. `pts`: (n, 2) points still to
+    come; `qpts`: (n, 4, 2), per quarter (None: no simulated quarter is left, as in overtime or after the game).
+    `bands`: {"low", "high", "home_up", "home_down": (pts, qpts)}, the same with both QBs' form at its low / high end
+    and with the home QB's high and the away QB's low (or the reverse); they add, per part, the likely range of each
+    chance: "margin_band" [home_down, home_up], "total_band" [low, high] (and for the game "home_band", "away_band")."""
     ls = s.get("linescores") or [[], []]
-    n = len(pts)
-    q = np.zeros((n, 4, 2))
-    for t in (0, 1):
-        q[:, :len(ls[t][:4]), t] = ls[t][:4]
-    if qpts is not None:
-        cur = {"pre": 0}.get(s["status"], min(4, int((3600 - clock) // 900) + 1))
-        for i in range(max(cur, 1) - 1, 4):
-            q[:, i] = (q[:, i] if i + 1 == cur else 0.0) + qpts[:, i]
-    final = np.array([s["home_score"], s["away_score"]], dtype=float) + pts
-    first = q[:, :2].sum(1)
-    parts = {"game": final, "1H": first, "2H": final - first, **{f"{i + 1}Q": q[:, i] for i in range(4)}}
+    score = np.array([s["home_score"], s["away_score"]], dtype=float)
+
+    def parts_of(pts, qpts):
+        q = np.zeros((len(pts), 4, 2))
+        for t in (0, 1):
+            q[:, :len(ls[t][:4]), t] = ls[t][:4]
+        if qpts is not None:
+            cur = {"pre": 0}.get(s["status"], min(4, int((3600 - clock) // 900) + 1))
+            for i in range(max(cur, 1) - 1, 4):
+                q[:, i] = (q[:, i] if i + 1 == cur else 0.0) + qpts[:, i]
+        final = score + pts
+        first = q[:, :2].sum(1)
+        return {"game": final, "1H": first, "2H": final - first, **{f"{i + 1}Q": q[:, i] for i in range(4)}}
+
+    parts = parts_of(pts, qpts)
     done = np.zeros((4, 2))  # points so far in each quarter (the current one included)
     for t in (0, 1):
         done[:len(ls[t][:4]), t] = ls[t][:4]
-    score = np.array([s["home_score"], s["away_score"]], dtype=float)
     now = {"game": score, "1H": done[:2].sum(0), "2H": score - done[:2].sum(0), **{f"{i + 1}Q": done[i] for i in range(4)}}
     out = {}
     for k, v in parts.items():
         out[k] = {"margin": _pmf(v[:, 0] - v[:, 1]), "total": _pmf(v.sum(1)), "now": [float(x) for x in now[k]]}
-    out["game"].update(home=_pmf(final[:, 0]), away=_pmf(final[:, 1]))
+    out["game"].update(home=_pmf(parts["game"][:, 0]), away=_pmf(parts["game"][:, 1]))
+    if bands:
+        b = {name: parts_of(*pq) for name, pq in bands.items()}
+        for k in parts:
+            out[k]["margin_band"] = [_pmf(b[n][k][:, 0] - b[n][k][:, 1]) for n in ("home_down", "home_up")]
+            out[k]["total_band"] = [_pmf(b[n][k].sum(1)) for n in ("low", "high")]
+        for side, j in (("home", 0), ("away", 1)):
+            out["game"][f"{side}_band"] = [_pmf(b[n]["game"][:, j]) for n in ("low", "high")]
     return out
 
 
@@ -157,6 +172,7 @@ class LiveModel:
         self.week_preds: dict[tuple, pd.DataFrame] = {}
         self.params: dict[str, pd.Series] = {}
         self.last: dict[str, tuple] = {}  # event -> (signature, corrections, output) of the last compute
+        self._computing: dict[str, threading.Lock] = {}  # event -> held while it's being computed
 
     def setup(self, season: int) -> PG.Setup:
         if season not in self.setups:
@@ -236,8 +252,10 @@ class LiveModel:
         return self.params[gid], qbs
 
     @staticmethod
-    def _starter_yards(passers: list, name: str | None) -> tuple[float, bool, str | None]:
-        """(yards, out, name shown): the expected starter's yards; out if another QB has taken over."""
+    def _starter_yards(passers: list, name: str | None, latest: str | None = None) -> tuple[float, bool, str | None]:
+        """(yards, out, name shown): the expected starter's yards; out if another QB has taken over — he threw the
+        team's latest pass (`latest`, espn.last_passers: "K.Pickett"), or has 5+ attempts and more than half the
+        starter's while the starter didn't throw the latest one."""
         if not passers:
             return 0.0, False, name
         last = (name or "").split()[-1].lower() if name else ""
@@ -245,8 +263,17 @@ class LiveModel:
         if not mine:  # starter not in the box score: follow the leading passer
             lead = passers[0]
             return lead[3], False, lead[0]
+
+        def threw_latest(full: str) -> bool:  # "Kenny Pickett" vs "K.Pickett"
+            if not latest or "." not in latest:
+                return False
+            initial, surname = latest.split(".", 1)
+            return full.split()[-1].lower() == surname.lower() and full[:1].upper() == initial[:1].upper()
         others = [r for r in passers if r is not mine[0]]
-        out = bool(others) and others[0][2] >= 5 and others[0][2] > mine[0][2] / 2
+        if threw_latest(mine[0][0]):
+            return mine[0][3], False, mine[0][0]
+        out = any(threw_latest(r[0]) for r in others) or (
+            bool(others) and others[0][2] >= 5 and others[0][2] > mine[0][2] / 2)
         return mine[0][3], out, mine[0][0]
 
     def compute(self, event: str, ov: dict) -> dict:
@@ -254,12 +281,15 @@ class LiveModel:
         changed."""
         s = espn.game_state(event)
         sig, key = (espn.signature(s), espn.box(s)), tuple(sorted(ov.items()))
-        hit = self.last.get(event)
-        if hit and hit[:2] == (sig, key):
-            return hit[2]
-        out = self.compute_state(s, ov)
-        self.last[event] = (sig, key, out)
-        return out
+        with self.lock:
+            busy = self._computing.setdefault(event, threading.Lock())
+        with busy:  # pages asking for the same game at once share one simulation
+            hit = self.last.get(event)
+            if hit and hit[:2] == (sig, key):
+                return hit[2]
+            out = self.compute_state(s, ov)
+            self.last[event] = (sig, key, out)
+            return out
 
     def compute_state(self, s: dict, ov: dict | None = None) -> dict:
         """Everything the page shows, from an espn.game_state() dict and optional corrections (`ov`, the
@@ -270,8 +300,9 @@ class LiveModel:
             an, qbs = self.game_params(s)
             su = self.setup(s["season"])
         home, away = s["home"], s["away"]
-        y0, out0, n0 = self._starter_yards(s["passers"].get(home, []), qbs[home][0])
-        y1, out1, n1 = self._starter_yards(s["passers"].get(away, []), qbs[away][0])
+        latest = s.get("last_passer") or {}
+        y0, out0, n0 = self._starter_yards(s["passers"].get(home, []), qbs[home][0], latest.get(home))
+        y1, out1, n1 = self._starter_yards(s["passers"].get(away, []), qbs[away][0], latest.get(away))
         to = [3.0 if v is None else float(v) for v in (s.get("timeouts") or [None, None])]
         st = {"clock": s["clock"], "margin": s["margin"], "pos": s["pos"], "kick": s["kick"], "yl": s["yl"],
               "down": s["down"], "togo": s["togo"], "yds0": y0, "yds1": y1, "out0": out0, "out1": out1,
@@ -312,13 +343,15 @@ class LiveModel:
         frame = pd.DataFrame([row])
         nxt = E.simulate(su.tb, frame, N_NEXT, seed=1, max_steps=1, record=True)
         full_y, full_p, full_q = E.simulate(su.tb, frame, N_GAME, seed=2, points=True, quarters=True)
-        def form_at(z):
+        def form_at(z0, z1):  # each QB's form fixed at its posterior mean + z sd
             cols = {}
-            for k in (0, 1):
+            for k, z in ((0, z0), (1, z1)):
                 cols[f"form_mean{k}"], cols[f"form_sd{k}"] = row[f"form_mean{k}"] + z * row[f"form_sd{k}"], 0.0
             return frame.assign(**cols)
-        band = pd.concat([form_at(-Z_RANGE), form_at(Z_RANGE)], ignore_index=True)
-        band_y = E.simulate(su.tb, band, N_GAME, seed=2)  # (2, n, 2): QB form low, high
+        z = Z_RANGE
+        band = pd.concat([form_at(-z, -z), form_at(z, z), form_at(z, -z), form_at(-z, z)], ignore_index=True)
+        # (4, n, 2): both QBs low, both high, home high + away low, home low + away high
+        band_y, band_p, band_q = E.simulate(su.tb, band, N_GAME, seed=2, points=True, quarters=True)
         drv = E.simulate(su.tb, frame, N_DRIVE, seed=3, drive=True)
         teams = (home, away)
 
@@ -401,7 +434,9 @@ class LiveModel:
                 "mix": [{"event": e, "prob": float(p)} for e, p in mix.head(6).items()],
                 "qbs": qb, "homeWin": home_win, "final": final,
                 "quarters": quarter_rows(s, st["clock"], None if s["status"] == "post" or ot else full_q[0]),
-                "scores": score_chances(s, st["clock"], full_p[0], None if s["status"] == "post" or ot else full_q[0]),
+                "scores": score_chances(s, st["clock"], full_p[0], None if s["status"] == "post" or ot else full_q[0],
+                                        {name: (band_p[i], None if s["status"] == "post" or ot else band_q[i])
+                                         for i, name in enumerate(("low", "high", "home_up", "home_down"))}),
                 "line": {"spread": _f(an.get("spread")), "total": _f(an.get("total"))},
                 "raw": {k2: (_f(v) if isinstance(v, (float, np.floating)) else (bool(v) if isinstance(v, (bool, np.bool_)) else v))
                         for k2, v in st.items()}}
@@ -433,7 +468,7 @@ def _local(page: Path) -> bytes:
     """A hosted page (hosted/*.html) pointed at this server's endpoints and paths instead of the published files."""
     html = page.read_text()
     for published, here in (("summary.json", "/api/summary"), ("kalshi.json", "/api/kalshi"), ("game.html", "/game"),
-                            ("edges.html", "/edges"), ("./", "/")):
+                            ("edges.html", "/edges"), ("watch.html", "/watch"), ("./", "/")):
         html = html.replace(f'"{published}"', f'"{here}"')
     return html.encode()
 
@@ -472,7 +507,9 @@ def serve(port: int = 8765, ds: Dataset | None = None) -> None:
                 elif u.path == "/edges":
                     self._send(200, _local(EDGES), "text/html; charset=utf-8")
                 elif u.path == "/game":
-                    self._send(200, TEMPLATE.read_bytes(), "text/html; charset=utf-8")
+                    self._send(200, _local(TEMPLATE), "text/html; charset=utf-8")
+                elif u.path == "/watch":
+                    self._send(200, _local(WATCH), "text/html; charset=utf-8")
                 elif u.path == "/api/games":
                     self._send(200, espn.games())
                 elif u.path == "/api/state":

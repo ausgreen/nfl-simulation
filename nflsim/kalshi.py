@@ -209,15 +209,15 @@ def _score_row(m: dict, codes: tuple[str, str]) -> dict | None:
     x = _num(m.get("floor_strike"))
     if kind != "win" and (x is None or m.get("strike_type") != "greater"):
         return None
-    return {"part": part, "kind": kind, "team": None if kind == "total" else TO_NFLVERSE.get(team, team),
+    return {"ticker": m["ticker"], "part": part, "kind": kind, "team": None if kind == "total" else TO_NFLVERSE.get(team, team),
             "x": x, "ask": _num(m.get("yes_ask_dollars")), "bid": _num(m.get("yes_bid_dollars")),
             "last": _num(m.get("last_price_dollars")), "url": event_url(m["event_ticker"], series, _slug(series))}
 
 
 def live_prices(games: list[dict], markets: list[dict] | None = None, scores: list[dict] | None = None) -> dict:
     """Open markets per game on the scoreboard (espn.games rows), for the page to show beside the model's chances:
-    {event: {team: [{"qb", "url", "lines": {line: {"ask", "bid", "last"}}}], "scores": [{"part", "kind", "team", "x",
-    "ask", "bid", "last", "url"}]}} (passing yards per QB; the score markets, see SCORE_SERIES), prices in dollars."""
+    {event: {team: [{"qb", "url", "lines": {line: {"ask", "bid", "last", "ticker"}}}], "scores": [{"ticker", "part",
+    "kind", "team", "x", "ask", "bid", "last", "url"}]}} (passing yards per QB; the score markets, see SCORE_SERIES), prices in dollars."""
     markets = fetch_markets() if markets is None else markets
     scores = score_markets() if scores is None else scores
     out = {}
@@ -248,5 +248,5 @@ def live_prices(games: list[dict], markets: list[dict] | None = None, scores: li
                 rows.append(row)
             row["lines"][str(round(_num(m["floor_strike"]) + 0.5))] = {
                 "ask": _num(m.get("yes_ask_dollars")), "bid": _num(m.get("yes_bid_dollars")),
-                "last": _num(m.get("last_price_dollars"))}
+                "last": _num(m.get("last_price_dollars")), "ticker": m["ticker"]}
     return out

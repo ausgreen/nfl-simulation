@@ -13,7 +13,7 @@ keeps its own copy of the model files, so changes here don't need to stay in syn
 
 ```sh
 uv sync                                  # install (Python >= 3.11, deps: numpy, pandas, pyarrow, scikit-learn)
-uv run nflsim live serve [--port 8765]   # live game companion, http://localhost:8765 (all games; /game?event=<id>) (127.0.0.1 only)
+uv run nflsim live serve [--port 8765]   # live game companion, http://localhost:8765 (all games; /game?event=<id>; /edges; /watch) (127.0.0.1 only)
 uv run nflsim sim game 2026_05_TB_DAL    # replay one game: pregame sim, then simulated from every play
 uv run nflsim sim fetch [--since YEAR]   # refresh slim play-by-play -> data/nflverse/pbp_sim/
 uv run nflsim fetch [--since YEAR]       # refresh nflverse stats + schedules, then play-by-play
@@ -74,8 +74,10 @@ calibration) -> vectorized simulation from any game state -> CLI replay or live 
   after 60 s. `publish.py`: `LocalDir` (atomic writes), `S3Compatible` (R2 via boto3, `hosted` extra) and cache times.
   `index.html` (home page): every game at a glance, live first, from `summary.json` (`live.app.summary`);
   `game.html?event=<id>`: one game; `edges.html`: the
-  model's chances vs Kalshi's prices (passing yards and score markets), largest gaps first. The score markets are
-  priced in the page from each state's `scores` (simulated points per part of the game, `app.score_chances`). All read the JSON by relative URL and show a stale-data banner. Locally: `/`, `/game`, `/edges`.
+  model's chances vs Kalshi's prices (passing yards and score markets), largest gaps first; `watch.html`: the viewer's
+  watch list (Watch buttons on the game and Model vs Kalshi pages; optional contracts and price paid for P/L), kept in
+  their browser's localStorage (`nflsim:watch`) — no Kalshi account involved. The score markets are
+  priced in the page from each state's `scores` (simulated points per part of the game, `app.score_chances`). All read the JSON by relative URL and show a stale-data banner. Locally: `/`, `/game`, `/edges`, `/watch`.
   `push.py`: with `--serve PORT`, `Hub` streams every published JSON file to open pages (Server-Sent Events,
   `/events?only=...`; with `--publish local` it serves the pages too); the pages poll only while no stream is up,
   so on R2 (no route to the worker yet) they poll as before.

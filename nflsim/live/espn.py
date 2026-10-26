@@ -7,6 +7,7 @@ correct the state by hand. Team codes are mapped to nflverse's (WSH -> WAS, LAR 
 from __future__ import annotations
 
 import math
+import re
 from datetime import datetime, timezone
 
 from . import feed
@@ -163,6 +164,7 @@ def add_summary(s: dict, sm: dict | None = None) -> dict:
             wall = d["plays"][-1].get("wallclock")
             break
     s["feed_time"] = wall
+    s["last_passer"] = last_passers(sm)
     # the team with the first drive received the opening kickoff, so the other team receives in the 2nd half
     drives = (sm.get("drives") or {}).get("previous") or []
     first = (drives[0].get("team") or {}).get("id") if drives else None
@@ -171,6 +173,28 @@ def add_summary(s: dict, sm: dict | None = None) -> dict:
         s["pos"] = s["h2_receiver"]
     s["fetched_at"] = datetime.fromtimestamp(source.now(), timezone.utc).isoformat(timespec="seconds")
     return s
+
+
+_PASSER = re.compile(r"(?:^|[\s)])([A-Z][A-Za-z'.\-]*\.\s?[A-Z][A-Za-z'\-]+) (?:pass|sacked)\b")
+
+
+def last_passers(sm: dict) -> dict[str, str]:
+    """Who threw (or was sacked on) each team's most recent dropback, as the play text names him ("K.Pickett"), from
+    the summary's drives: a backup's first throw shows the starter is out before the box score could."""
+    out: dict[str, str] = {}
+    drives = sm.get("drives") or {}
+    for d in [drives.get("current")] + list(reversed(drives.get("previous") or [])):
+        if not d:
+            continue
+        team = team_code(((d.get("team") or {}).get("abbreviation")) or "")
+        if not team or team in out:
+            continue
+        for play in reversed(d.get("plays") or []):
+            m = _PASSER.search(play.get("text") or "")
+            if m and "No Play" not in (play.get("text") or ""):
+                out[team] = m.group(1).replace(" ", "")
+                break
+    return out
 
 
 SIGNATURE = ("status", "period", "clock", "display_clock", "home_score", "away_score", "pos", "kick", "yl", "down", "togo", "last_play")

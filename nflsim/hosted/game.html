@@ -93,6 +93,9 @@ td.r, th.r { text-align: right; }
   margin-bottom: -1px; font-weight: 600; color: var(--ink-2); }
 .mkt-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
 .markets [hidden] { display: none; }
+button.watch { font: inherit; font-size: 11px; color: var(--ink-2); background: none; border: 1px solid var(--rule); border-radius: 999px;
+  padding: 0 7px; margin-left: 4px; cursor: pointer; }
+button.watch[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); font-weight: 600; }
 .qbs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 14px; }
 .qb h3 { margin: 0; font-size: 16px; }
 .qb .sub { color: var(--ink-2); margin: 2px 0 8px; }
@@ -106,7 +109,7 @@ footer { color: var(--ink-3); font-size: 12.5px; }
 <div class="app">
   <header class="site">
     <span class="brand">Live Game Companion</span>
-    <nav class="tabs" aria-label="Pages"><a href="./">All games</a><a href="game.html" aria-current="page">Game</a><a href="edges.html">Model vs Kalshi</a></nav>
+    <nav class="tabs" aria-label="Pages"><a href="./">All games</a><a href="game.html" aria-current="page">Game</a><a href="edges.html">Model vs Kalshi</a><a href="watch.html">Watch list</a></nav>
     <span class="beat" id="beat" title="Pulses when new numbers arrive"></span>
   </header>
   <header class="top">
@@ -144,7 +147,8 @@ footer { color: var(--ink-3); font-size: 12.5px; }
       <div class="now-part" id="part-now"></div>
       <table><thead><tr><th>Market</th><th class="r">Chance</th><th class="r" title="Kalshi yes price (ask), before fees">Kalshi</th><th></th></tr></thead>
         <tbody id="lines-rows"></tbody></table>
-      <div class="muted" style="font-size:12px;margin-top:4px"><span class="mark-key"></span>Kalshi ask: bar past the mark = the model rates it above the price.
+      <div class="muted" style="font-size:12px;margin-top:4px"><span class="rng-key"></span><span class="rng-key"></span>likely range of the chance ·
+      <span class="mark-key"></span>Kalshi ask: bar past the mark = the model rates it above the price.
         Quarters don't count overtime; the 2nd half and the game do.</div>
     </section>
   </section>
@@ -315,6 +319,26 @@ footer { color: var(--ink-3); font-size: 12.5px; }
   const market = (d, q) => (((prices || {})[d.event] || {})[q.team] || []).find((m) => nameKey(m.qb) === nameKey(q.qb));
   const cents = (x) => x == null ? "—" : `${Math.round(x * 100)}¢`;
 
+  // the viewer's watch list, kept in this browser only (the Watch list page reads it): [{t: ticker, ev, type, ...}]
+  const WATCH_KEY = "nflsim:watch";
+  const watchStore = {
+    all() { try { return JSON.parse(localStorage.getItem(WATCH_KEY)) || []; } catch { return []; } },
+    save(list) { try { localStorage.setItem(WATCH_KEY, JSON.stringify(list)); } catch {} },
+    has(t) { return this.all().some((e) => e.t === t); },
+    toggle(entry) {
+      const list = this.all(), i = list.findIndex((e) => e.t === entry.t);
+      if (i >= 0) list.splice(i, 1); else list.push({ side: "yes", ...entry, n: null, paid: null, added: Date.now() });
+      this.save(list);
+    },
+  };
+  const watchButton = (entry) => entry.t ? `<button type="button" class="watch" data-entry="${esc(JSON.stringify(entry))}" aria-pressed="${watchStore.has(entry.t)}">${watchStore.has(entry.t) ? "Watching" : "Watch"}</button>` : "";
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("button.watch");
+    if (!b) return;
+    watchStore.toggle(JSON.parse(b.dataset.entry));
+    if (last) render(last);
+  });
+
   function qbLines(d, q) {
     const m = market(d, q);
     const lines = q.lines.filter((l) => (l.line >= 150 && l.line <= 350) || (m && m.lines[l.line]));
@@ -323,7 +347,8 @@ footer { color: var(--ink-3); font-size: 12.5px; }
       const k = m && m.lines[l.line];
       if (!k) return "";
       const tip = `Kalshi ${l.line}+: buy yes ${cents(k.ask)} · sell ${cents(k.bid)} · last ${cents(k.last)}`;
-      return `<a href="${esc(m.url)}" target="_blank" rel="noopener" title="${esc(tip)}">${cents(k.ask)}</a>`;
+      return `<a href="${esc(m.url)}" target="_blank" rel="noopener" title="${esc(tip)}">${cents(k.ask)}</a>${watchButton(
+        { t: k.ticker, ev: d.event, type: "yards", team: q.team, qb: q.qb, line: l.line })}`;
     };
     const spread = (l) => l.lo == null ? "" : `${l.line}+: ${pct(l.p)}, likely range ${pct(l.lo)}–${pct(l.hi)}`;
     const dots = (l) => l.lo == null ? "" : [l.lo, l.hi].map((x) => `<span class="rng" style="left:${(x * 100).toFixed(1)}%"></span>`).join("");
@@ -339,9 +364,9 @@ footer { color: var(--ink-3); font-size: 12.5px; }
   // Kalshi's score markets (game, halves, quarters) beside the model's chance, from its simulated points (d.scores)
   const PARTS = { game: "Game", "1H": "1st half", "2H": "2nd half", "1Q": "Q1", "2Q": "Q2", "3Q": "Q3", "4Q": "Q4" };
   let part = store.get("live:part") || "game";
-  const above = (pmf, x) => pmf[1].reduce((s, p, i) => pmf[0] + i > x ? s + p : s, 0);  // chance of more than x
-  function scoreChance(d, m) {
-    const s = d.scores && d.scores[m.part];
+  // chance of more than x: [lowest value, counts from there up, games simulated] (older states: chances, no total)
+  const above = (pmf, x) => pmf[1].reduce((s, p, i) => pmf[0] + i > x ? s + p : s, 0) / (pmf[2] || 1);
+  function scoreChance(d, m, s = d.scores && d.scores[m.part]) {
     if (!s) return null;
     const home = m.team === d.home, tie = above(s.margin, -0.5) - above(s.margin, 0.5);
     if (m.kind === "win") return m.team === "TIE" ? tie
@@ -349,6 +374,16 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     if (m.kind === "spread") return home ? above(s.margin, m.x) : 1 - above(s.margin, -m.x);
     if (m.kind === "total") return above(s.total, m.x);
     return above(home ? s.home : s.away, m.x);
+  }
+  // the chance's likely range: priced with both QBs' form at its low and at its high end (spreads and winners:
+  // one QB high and the other low), as the passing-yard dots are
+  function scoreRange(d, m) {
+    const s = d.scores && d.scores[m.part];
+    if (!s || !s.margin_band) return null;
+    const at = (i) => ({ margin: s.margin_band[i], total: s.total_band[i],
+                         home: s.home_band && s.home_band[i], away: s.away_band && s.away_band[i] });
+    const a = scoreChance(d, m, at(0)), b = scoreChance(d, m, at(1));
+    return [Math.min(a, b), Math.max(a, b)];
   }
   const marketLabel = (m) => {
     const n = m.x == null ? "" : Math.round(m.x + 0.5);
@@ -382,7 +417,7 @@ footer { color: var(--ink-3); font-size: 12.5px; }
 
   function renderLines(d) {
     const order = (m) => [["win", "spread", "total", "team"].indexOf(m.kind), [d.away, d.home, null, "TIE"].indexOf(m.team), m.x || 0];
-    const rows = ((((prices || {})[d.event] || {}).scores) || []).map((m) => ({ m, p: scoreChance(d, m) }))
+    const rows = ((((prices || {})[d.event] || {}).scores) || []).map((m) => ({ m, p: scoreChance(d, m), r: scoreRange(d, m) }))
       .filter(({ m, p }) => p != null && !((m.ask == null || m.ask <= 0.02 || m.ask >= 0.98) && (p <= 0.02 || p >= 0.98)))  // decided
       .sort((a, b) => { const x = order(a.m), y = order(b.m); return x[0] - y[0] || x[1] - y[1] || x[2] - y[2]; });
     const parts = Object.keys(PARTS).filter((k) => rows.some((r) => r.m.part === k));
@@ -395,11 +430,14 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     if (!parts.includes(part)) part = parts[0];
     $("parts").innerHTML = parts.map((k) => `<button type="button" data-part="${k}" aria-pressed="${k === part}">${PARTS[k]}</button>`).join("");
     $("part-now").innerHTML = partNow(d, part);
-    $("lines-rows").innerHTML = rows.filter((r) => r.m.part === part).map(({ m, p }) => {
+    $("lines-rows").innerHTML = rows.filter((r) => r.m.part === part).map(({ m, p, r }) => {
       const tip = `Kalshi ${marketLabel(m)}: buy yes ${cents(m.ask)} · sell ${cents(m.bid)} · last ${cents(m.last)}`;
+      const dots = r ? r.map((x) => `<span class="rng" style="left:${(x * 100).toFixed(1)}%"></span>`).join("") : "";
+      const range = r ? `${marketLabel(m)}: ${pct(p)}, likely range ${pct(r[0])}–${pct(r[1])}` : "";
       return `<tr data-key="${esc(`${m.part}-${m.kind}-${m.team}-${m.x}`)}"><td>${esc(marketLabel(m))}</td><td class="r num">${pct(p)}</td>
-        <td class="r num"><a href="${esc(m.url)}" target="_blank" rel="noopener" title="${esc(tip)}">${cents(m.ask)}</a></td>
-        <td style="width:45%"><div class="bar"><i style="width:${(p * 100).toFixed(1)}%"></i>${m.ask == null ? "" :
+        <td class="r num"><a href="${esc(m.url)}" target="_blank" rel="noopener" title="${esc(tip)}">${cents(m.ask)}</a>${watchButton(
+          { t: m.ticker, ev: d.event, type: "score", part: m.part, kind: m.kind, team: m.team, x: m.x, label: marketLabel(m) })}</td>
+        <td style="width:45%"><div class="bar" title="${esc(range)}"><i style="width:${(p * 100).toFixed(1)}%"></i>${dots}${m.ask == null ? "" :
           `<b class="ask" style="left:${(m.ask * 100).toFixed(1)}%" title="Kalshi ask ${cents(m.ask)} · model ${pct(p)}"></b>`}</div></td></tr>`;
     }).join("");
   }

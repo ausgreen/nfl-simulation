@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from nflsim.live import espn, feed
+from nflsim.live import app, espn, feed
 
 SNAPSHOT = Path(__file__).parent / "fixtures" / "week5_snapshot.jsonl.gz"
 SCOREBOARD = f"{espn.BASE}/scoreboard"
@@ -160,3 +160,23 @@ def test_quarters_add_up_to_the_final_but_overtime(replay):
     post = m.compute(next(g["event"] for g in espn.games() if g["state"] == "post"), {})
     assert all(q["state"] == "done" for q in post["quarters"])
     assert sum(q["home"] for q in post["quarters"]) == post["score"]["home"] == post["final"]["home"]
+
+
+def test_a_backup_throwing_the_latest_pass_marks_the_starter_out():
+    sm = {"drives": {"previous": [
+        {"team": {"abbreviation": "CAR"}, "plays": [{"text": "(Shotgun) B.Young pass short left to X for 5 yards"}]},
+        {"team": {"abbreviation": "TB"}, "plays": [{"text": "(Shotgun) B.Mayfield sacked at TB 30 for -6 yards"}]},
+        {"team": {"abbreviation": "CAR"}, "plays": [{"text": "K.Pickett pass short right to T.Tremble for 8 yards"},
+                                                     {"text": "C.Hubbard right tackle for 3 yards"}]}]}}
+    latest = espn.last_passers(sm)
+    assert latest == {"CAR": "K.Pickett", "TB": "B.Mayfield"}
+    car = [("Bryce Young", "1", 27, 163.0), ("Kenny Pickett", "2", 1, 8.0)]
+    assert app.LiveModel._starter_yards(car, "Bryce Young", latest["CAR"]) == (163.0, True, "Bryce Young")
+    assert app.LiveModel._starter_yards(car, "Bryce Young", "B.Young") == (163.0, False, "Bryce Young")
+    assert app.LiveModel._starter_yards(car, "Bryce Young", None) == (163.0, False, "Bryce Young")  # 1 attempt: not yet
+
+
+def test_local_pages_point_at_this_server():
+    for page in (app.HOME, app.EDGES, app.WATCH):
+        html = app._local(page).decode()
+        assert '"/watch"' in html and '"watch.html"' not in html and '"summary.json"' not in html

@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from nflsim.hosted.publish import LocalDir, S3Compatible, max_age
-from nflsim.hosted.worker import EDGES_PAGE, GAME_PAGE, PAGE, Worker, prices_at, read_history
+from nflsim.hosted.worker import EDGES_PAGE, GAME_PAGE, PAGE, WATCH_PAGE, Worker, prices_at, read_history
 from nflsim.live import espn, feed
 
 SNAPSHOT = Path(__file__).parent / "fixtures" / "week5_snapshot.jsonl.gz"
@@ -103,6 +103,7 @@ def test_first_tick_publishes_page_games_state_and_status(tmp_path, model, repla
     assert cards[PRE]["homeWin"] == pre["homeWin"] and len(cards[PRE]["qbs"]) == 2 and cards[POST]["state"] == "post"
     assert (site / "game.html").read_bytes() == GAME_PAGE.read_bytes()
     assert (site / "edges.html").read_bytes() == EDGES_PAGE.read_bytes()
+    assert (site / "watch.html").read_bytes() == WATCH_PAGE.read_bytes()
 
 
 def test_unchanged_games_are_not_recomputed_or_republished(tmp_path, model, replay):
@@ -185,7 +186,14 @@ def test_overtime_is_simulated(tmp_path, model, replay):
     assert all(q["state"] == "done" for q in state["quarters"])
     sc = state["scores"]  # overtime counts in the game and the 2nd half, not in the 4th quarter
     assert sc["game"]["total"][0] >= 68 and len(sc["game"]["margin"][1]) > 1 and len(sc["2H"]["total"][1]) > 1
-    assert len(sc["4Q"]["total"][1]) == 1 and abs(sum(sc["game"]["home"][1]) - 1) < 1e-3
+    assert len(sc["4Q"]["total"][1]) == 1 and sum(sc["game"]["home"][1]) == sc["game"]["home"][2]
+    # likely ranges: the margin with one QB hot and the other cold, both ways; totals with both cold, both hot
+    def mean(p):
+        return sum((p[0] + i) * c for i, c in enumerate(p[1])) / p[2]
+    lo, hi = sc["game"]["margin_band"]
+    assert mean(lo) < mean(sc["game"]["margin"]) < mean(hi)
+    lo, hi = sc["game"]["total_band"]
+    assert mean(lo) <= mean(sc["game"]["total"]) <= mean(hi) and set(sc["game"]) >= {"home_band", "away_band"}
 
 
 def test_pregame_states_refresh_hourly(tmp_path, model, replay):
@@ -238,10 +246,11 @@ def test_cache_times(path, seconds):
 
 
 def test_pages_have_no_corrections_and_use_relative_urls():
-    home, game, edges = PAGE.read_text(), GAME_PAGE.read_text(), EDGES_PAGE.read_text()
-    for html in (home, game, edges):
-        for gone in ("<form", "/api/", "overrides", "live:fix"):
+    home, game, edges, watch = PAGE.read_text(), GAME_PAGE.read_text(), EDGES_PAGE.read_text(), WATCH_PAGE.read_text()
+    for html in (home, game, edges, watch):
+        for gone in ("<form", "/api/", "overrides", "live:fix", "KALSHI_", "portfolio"):  # nothing asks for an account
             assert gone not in html
+        assert '<a href="watch.html"' in html  # every page has the Watch list tab
     for used in ('getJSON("games.json")', "getJSON(`state/", 'getJSON("status.json")'):
         assert used in game
     assert 'SUMMARY = "summary.json", GAME = "game.html"' in home
