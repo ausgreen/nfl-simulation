@@ -18,6 +18,9 @@ Optional team columns (default 0 = league average), for team k on offense agains
   delta{k} overall efficiency (completions up, sacks and interceptions down, runs +4 yards per unit)
   form_mean{k}/form_sd{k}  each simulated game draws log(form) ~ Normal and scales completion gains by exp(form)
   delta_sd                 each simulated game draws a team efficiency shock ~ Normal(0, delta_sd)
+  lead_pass{k}/trail_pass{k}  the head coach's pass-vs-run logit shift leading / trailing by 1-16 in the last 5:00
+  def_to{k}  log-odds shift of team k's defense calling a timeout then, trailing by 1-16
+  pull{k}    log multiplier on team k's starter exit hazard in the 4th quarter at a 17+ point margin (sim/coaches.py)
 """
 
 from __future__ import annotations
@@ -27,7 +30,9 @@ import pandas as pd
 
 from . import tables as T
 
-TEAM_COLS = ["pass", "sack", "int", "comp", "run", "pace", "delta", "form_mean", "form_sd"]
+TEAM_COLS = ["pass", "sack", "int", "comp", "run", "pace", "delta", "form_mean", "form_sd",
+             "lead_pass", "trail_pass", "def_to", "pull"]
+LATE = 300.0  # the coach columns' "late": the last 5:00 of regulation
 # what happened on a snap (record=True): codes into EVENTS
 EVENTS = ["completion", "incomplete", "sack", "interception", "fumble lost", "run", "punt", "field goal",
           "missed field goal", "kneel", "spike", "touchdown pass", "touchdown run", "defensive touchdown", "safety",
@@ -39,6 +44,7 @@ WARN_SNAP = 6.0   # a play snapped at least this many seconds before a two-minut
 # stopped PLAY_SECS after the snap with a timeout (incompletions stop it anyway). Real teams kicked on 80-96% of
 # last first-half snaps in range; with the clock tables alone the simulator kicked on 20-36%.
 FG_RANGE, LAST_SNAP, PLAY_SECS = 40, 6.0, 5.0
+KNEEL, KNEEL_SECS, PLAY_CLOCK = T.CALLS.index("kneel"), 2.0, 40.0  # victory formation (see simulate)
 # how the drive in progress ended (drive=True): codes into DRIVE_RESULTS, checked in this order
 DRIVE_RESULTS = ["defensive touchdown", "safety", "touchdown", "field goal", "missed field goal", "punt",
                  "turnover on downs", "interception", "fumble lost", "end of half", "end of game"]
@@ -46,7 +52,7 @@ DRIVE_RESULTS = ["defensive touchdown", "safety", "touchdown", "field goal", "mi
 
 def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps: int = 400,
              points: bool = False, record: bool = False, drive: bool = False, quarters: bool = False,
-             overtime: bool = True):
+             overtime: bool = True, audit: dict | None = None, trace: dict | None = None):
     """Final passing yards of both starters: array (rows, n, 2); with points=True also each team's points
     scored from the start state on (rows, n, 2). With record=True (use a small max_steps), returns a dict of the
     state after the last step instead: yds, pts, pos, yl, down, togo, clock, margin, kick, done, event (code into
@@ -55,6 +61,14 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
     (code into DRIVE_RESULTS, -1 if no snap), plays, used (seconds), pts, yds, margin, clock. With points=True and
     quarters=True, also the points each team scored in each regulation quarter (rows, n, 4, 2), credited to the
     quarter in which the scoring snap started (overtime points count in pts, in no quarter).
+
+    audit (a dict, filled in place): clock checks — "used" and "n", (11, 10) arrays of game seconds used and
+    snaps by play category (tables.CATS) x clock phase (tables.c_bin), "gain" (11) yards gained by category, and
+    "snaps", "changes": per game (rows, n)
+    counts of snaps (plays from scrimmage) and changes of possession.
+
+    trace (a dict, filled in place): per game, "first" (rows, n) the first snap's event (code into EVENTS, -1 if
+    none), "first_pos" (rows, n) its offense, and "dropbacks" (rows, n, 2) each starter's dropbacks from here on.
 
     overtime=True plays overtime after a tied regulation (NFL rules since 2025: each team gets a possession, then the
     next score wins; the regular season's 10-minute period can end tied, a postseason game (`post`) plays 15-minute
@@ -131,6 +145,8 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
     clock0 = clock.copy()
     result = np.full(r * n, -1, dtype=np.int8)
     plays = np.zeros(r * n, dtype=np.int16)
+    if trace is not None:
+        snap1, snap1_pos, drops = np.full(r * n, -1, np.int8), np.full(r * n, -1, np.int8), np.zeros((r * n, 2))
 
     for _ in range(max_steps):
         a = np.flatnonzero(~done)
@@ -184,7 +200,10 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
         d, t, z, zg = dn - 1, T.t_bin(tg), T.z_bin(y), T.zg_bin(y)
         c, s, s3 = T.c_bin(ck), T.s_bin(mg), T.s3_bin(mg)
         pc = tb.call.probs[tb.call.cell(d=d, t=t, z=z, zc=T.zc_bin(y), c=c, s=s)].copy()
-        lean = np.exp(tp["pass"][ra, p])
+        late = (ck <= LATE) & ~ot[a]
+        lead, trail = late & (mg >= 1) & (mg <= 16), late & (mg <= -1) & (mg >= -16)
+        lean = np.exp(tp["pass"][ra, p] + np.where(lead, tp["lead_pass"][ra, p], 0.0)
+                      + np.where(trail, tp["trail_pass"][ra, p], 0.0))
         both = pc[:, 0] + pc[:, 1]
         pc[:, 0] = both * pc[:, 0] * lean / (pc[:, 0] * lean + pc[:, 1])
         pc[:, 1] = both - pc[:, 0]
@@ -192,6 +211,17 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
         left = np.where(ck > 1800, ck - 1800, ck)
         wants_fg = (ck > 1800) | ((mg >= -3) & (mg <= 0))
         call[(left <= LAST_SNAP) & (y <= FG_RANGE) & wants_fg] = 3
+        # a leader in the 2nd half kneels when that runs out the clock, and only then: each kneel takes a couple of
+        # seconds and then the play clock, unless a defensive timeout or the two-minute warning stops it; otherwise
+        # it keeps playing (a would-be kneel becomes a run). The learned calls knelt whenever ahead late, ran out of
+        # downs against the defense's timeouts and punted: simulated leaders getting the ball with 1:00-2:00 left ran
+        # out the clock 27% of the time and punted 45%, real ones 74% and 17% (2023-25).
+        lead2 = (mg >= 1) & (ck <= 1800) & ~ot[a]
+        kneels = np.maximum(2 - d, 0) + 1  # on downs 1-3
+        stops = tl[a, 1 - p] + (ck > 120)
+        kill = lead2 & (d <= 2) & (y >= 2) & (ck <= kneels * KNEEL_SECS + np.maximum(kneels - stops, 0) * PLAY_CLOCK)
+        call[lead2 & ~kill & (call == KNEEL)] = 1
+        call[kill] = KNEEL
         m = len(a)
         gain = np.zeros(m)
         td = np.zeros(m, bool)        # offense touchdown
@@ -213,6 +243,8 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
             q = q * np.column_stack([f_comp, np.ones(len(ip)), f_sack, f_int, f_int, f_comp, f_sack])
             o = T.sample_rows(rng, q)
             ev[ip] = np.array([0, 1, 2, 3, 3, 4, 4], dtype=np.int8)[o]  # comp, inc, sack, int, int (TD), fumble x2
+            if trace is not None:
+                np.add.at(drops, (a[ip], p[ip]), ~out[a[ip], p[ip]])
             comp = (o == 0) | (o == 5)
             ic = ip[comp]
             g = tb.comp_gain.sample(rng, tb.comp_gain.cell(d=d[ic], t=t[ic], z=z[ic], zg=zg[ic], c=c[ic]))
@@ -243,6 +275,8 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
             # the starter may leave after this dropback
             on = ~out[a[ip], p[ip]]
             h = tb.exit_hazard.probs[tb.exit_hazard.cell(c=c[ip], s=s[ip]), 1]
+            blowout = (ck[ip] <= 900) & (np.abs(mg[ip]) >= 17) & ~ot[a[ip]]
+            h = np.minimum(h * np.exp(np.where(blowout, tp["pull"][ra[ip], p[ip]], 0.0)), 1.0)
             leave = on & (rng.random(len(ip)) < h)
             out[a[ip][leave], p[ip][leave]] = True
 
@@ -348,7 +382,7 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
         if tb.timeout is not None:
             pt = tb.timeout.probs[tb.timeout.cell(c=c, s=s, cat=cat, tlo=tlo, tld=tld)].copy()
             pt[:, 1] *= tlo > 0
-            pt[:, 2] *= tld > 0
+            pt[:, 2] *= (tld > 0) * np.exp(np.where(lead, tp["def_to"][ra, 1 - p], 0.0))
             tox = T.sample_rows(rng, pt).astype(np.int8)
             caller = np.where(tox == 1, p, 1 - p)
             used = tox > 0
@@ -356,6 +390,9 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
         dt = tb.elapsed.sample(rng, tb.elapsed.cell(cat=cat, tox=tox, c=c, s3=s3))
         normal = ((c == 0) | (c == 2)) & (dt > 0)
         dt = np.where(normal, np.maximum(dt + tp["pace"][ra, p], 1), dt)
+        # a leader's kneel with time left takes the whole play clock (the table's kneels average ~33 s: it learns
+        # mostly from final kneels, cut short when time ran out)
+        dt = np.where(lead2 & (call == KNEEL) & (tox == 0), KNEEL_SECS + PLAY_CLOCK, dt)
         nc = ck - dt
         # two-minute warning: a play snapped well before it stops the clock there (overtime's is not modeled)
         for warn in (1920.0, 120.0):
@@ -370,6 +407,19 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
         nc[save] = ck[save] - PLAY_SECS
         half = (ck > 1800) & (nc <= 1800)
         nc[half] = 1800
+        if audit is not None:
+            if not audit:
+                audit.update(used=np.zeros((len(T.CATS), 10)), n=np.zeros((len(T.CATS), 10)),
+                             gain=np.zeros(len(T.CATS)), snaps=np.zeros(r * n), changes=np.zeros(r * n))
+            np.add.at(audit["gain"], cat, gain)
+            if "fourth" not in audit:
+                audit["fourth"] = np.zeros((len(T.CALLS), 8))
+            f4 = d == 3
+            np.add.at(audit["fourth"], (call[f4], z[f4]), 1)
+            np.add.at(audit["used"], (cat, c), ck - np.maximum(nc, 0))
+            np.add.at(audit["n"], (cat, c), 1)
+            np.add.at(audit["snaps"], a, (call <= 1) | (call == 4) | (call == 5))
+            np.add.at(audit["changes"], a, (np_ != p) & ~half)
         np_[half] = h2[a][half]
         nk[half] = True
         tl[a[half]] = 3
@@ -401,12 +451,18 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
             plays[a] += 1
             result[a[over]] = code[over]
             done[a[over]] = True
-        if record:
+        if record or trace is not None:
             ev[iu], ev[ifg] = 6, np.where(fg_good[ifg], 7, 8)
             ev[ik], ev[call == 5] = 9, 10
             ev[td & (call == 0)], ev[td & (call == 1)], ev[dtd], ev[safety] = 11, 12, 13, 14
+        if record:
             event[a], last_gain[a], last_downs[a] = ev, gain, on_downs
+        if trace is not None:
+            new = snap1[a] < 0
+            snap1[a[new]], snap1_pos[a[new]] = ev[new], p[new]
 
+    if trace is not None:
+        trace.update(first=snap1.reshape(r, n), first_pos=snap1_pos.reshape(r, n), dropbacks=drops.reshape(r, n, 2))
     if drive:
         sh = (r, n)
         return {"result": result.reshape(sh), "plays": plays.reshape(sh), "used": (clock0 - clock).reshape(sh),

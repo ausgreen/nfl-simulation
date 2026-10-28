@@ -23,7 +23,7 @@ PASSING_COLUMNS = ["season", "week", "season_type", "game_id", "player_id", "pla
 SCHEDULE_COLUMNS = ["game_id", "season", "game_type", "week", "gameday", "gametime", "away_team", "home_team",
                     "away_score", "home_score", "location", "away_rest", "home_rest", "spread_line",
                     "total_line", "div_game", "roof", "surface", "temp", "wind", "away_qb_id", "home_qb_id",
-                    "away_qb_name", "home_qb_name", "stadium_id", "stadium"]
+                    "away_qb_name", "home_qb_name", "away_coach", "home_coach", "stadium_id", "stadium"]
 
 # Relocated franchises, so a defense's prior seasons follow it to the new city.
 FRANCHISE = {"OAK": "LV", "SD": "LAC", "STL": "LA"}

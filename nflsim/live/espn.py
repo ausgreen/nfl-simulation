@@ -126,9 +126,9 @@ def situation(event: str, sb: dict | None = None) -> dict:
                  togo=float(sit.get("distance") or 10))
     else:  # between plays after a score, or before a kickoff: the team not scoring last receives
         scorer = (last.get("team") or {}).get("id")
-        if last.get("scoreValue") and scorer in ids:
-            recv = 1 - ids[scorer]
-        else:
+        if last.get("scoreValue") and scorer in ids:  # after a safety the scoring team receives the free kick
+            recv = ids[scorer] if "SAFETY" in (last.get("text") or "").upper() else 1 - ids[scorer]
+        else:  # a timeout after the score hides it: add_summary corrects this from the scoring plays
             recv = ids.get(pos_id, 0)
         s.update(pos=recv, kick=True, yl=float("nan"), down=1, togo=10.0)
         s["halftime"] = kind == "End of Half" or (period == 2 and qclock <= 0)  # receiver set by add_summary
@@ -165,6 +165,10 @@ def add_summary(s: dict, sm: dict | None = None) -> dict:
             break
     s["feed_time"] = wall
     s["last_passer"] = last_passers(sm)
+    if s.get("kick") and not s.get("overtime"):
+        recv = kickoff_receiver(sm, s)
+        if recv is not None:
+            s["pos"] = 0 if recv == s["home"] else 1
     # the team with the first drive received the opening kickoff, so the other team receives in the 2nd half
     drives = (sm.get("drives") or {}).get("previous") or []
     first = (drives[0].get("team") or {}).get("id") if drives else None
@@ -173,6 +177,25 @@ def add_summary(s: dict, sm: dict | None = None) -> dict:
         s["pos"] = s["h2_receiver"]
     s["fetched_at"] = datetime.fromtimestamp(source.now(), timezone.utc).isoformat(timespec="seconds")
     return s
+
+
+def kickoff_receiver(sm: dict, s: dict) -> str | None:
+    """Who receives the coming kickoff, from the summary's scoring plays: if the latest score came at the current
+    game clock (no snap since), the other team, or after a safety the scoring team. None when that can't be told
+    (the scoreboard's guess stands). Needed because a timeout after a score replaces it as the scoreboard's last
+    play, and ESPN's possession then still names the team that scored."""
+    plays = sm.get("scoringPlays") or []
+    if not plays:
+        return None
+    sp = plays[-1]
+    clock = ((sp.get("clock") or {}).get("displayValue") or "").strip()
+    if (sp.get("period") or {}).get("number") != s.get("period") or not clock or clock != (s.get("display_clock") or "").strip():
+        return None
+    scorer = team_code(((sp.get("team") or {}).get("abbreviation")) or "")
+    if scorer not in (s["home"], s["away"]):
+        return None
+    safety = "safety" in ((sp.get("type") or {}).get("text") or "").lower()
+    return scorer if safety else (s["away"] if scorer == s["home"] else s["home"])
 
 
 _PASSER = re.compile(r"(?:^|[\s)])([A-Z][A-Za-z'.\-]*\.\s?[A-Z][A-Za-z'\-]+) (?:pass|sacked)\b")

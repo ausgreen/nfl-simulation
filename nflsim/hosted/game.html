@@ -99,6 +99,8 @@ button.watch[aria-pressed="true"] { color: var(--accent); border-color: var(--ac
 .qbs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 14px; }
 .qb h3 { margin: 0; font-size: 16px; }
 .qb .sub { color: var(--ink-2); margin: 2px 0 8px; }
+.qb .theta { font-size: 13px; margin: -4px 0 8px; }
+.qb .theta .badge { margin-left: 4px; }
 .stale { background: var(--warn-wash); color: var(--warn); border: 1px solid var(--warn); border-radius: 8px; padding: 10px 14px; }
 .stale[hidden] { display: none; }
 .err { color: var(--warn); }
@@ -271,7 +273,7 @@ footer { color: var(--ink-3); font-size: 12.5px; }
   }
 
   let shownEvent = null;
-  function render(d) { draw(d); cue("#head .score", "#head .now", "#proj .final", "#proj .quarters > div", "#next tr", "#drive tr", "#mix", "#qbs h3", "#qbs .sub", "#qbs tbody tr", "#lines-rows tr", "#part-now"); }
+  function render(d) { draw(d); cue("#head .score", "#head .now", "#proj .final", "#proj .quarters > div", "#next tr", "#drive tr", "#mix", "#qbs h3", "#qbs .sub", "#qbs .theta", "#qbs tbody tr", "#lines-rows tr", "#part-now"); }
 
   function draw(d) {
     if (d.event !== shownEvent) { seen.clear(); shownEvent = d.event; }  // another game: nothing to compare
@@ -310,7 +312,7 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     $("qbs").innerHTML = d.qbs.map((q) => `<section class="panel qb">
         <h3>${esc(q.qb || q.team)} <span class="muted">${esc(q.team)}</span> ${q.out ? `<span class="badge warn">may be out</span>` : ""}</h3>
         <div class="sub"><b class="num">${Math.round(q.yds)}</b> yds now · ${q.median == null ? "no projection yet" : `final median <b class="num">${Math.round(q.median)}</b> (80% range ${Math.round(q.p10)}–${Math.round(q.p90)})`} · pregame ${Math.round(q.mu)}</div>
-        ${qbLines(d, q)}</section>`).join("");
+        ${thetaRow(q)}${qbLines(d, q)}</section>`).join("");
   }
 
   // Kalshi's market for this QB (same team, same last name), if it lists one
@@ -338,6 +340,23 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     watchStore.toggle(JSON.parse(b.dataset.entry));
     if (last) render(last);
   });
+
+  // what moves this QB's chances: dropbacks left and, when his team has the next snap, the chance of the line
+  // nearest a coin flip after each result of that snap (the same simulated games, grouped by it)
+  function thetaRow(q) {
+    const th = q.theta;
+    if (!th || q.out) return "";
+    const db = th.dropbacks, n = Math.round(db.mean);
+    let i = -1;
+    q.lines.forEach((l, j) => { if (l.line > q.yds && l.p > 0.03 && l.p < 0.97 && (i < 0 || Math.abs(l.p - 0.5) < Math.abs(q.lines[i].p - 0.5))) i = j; });
+    const L = i >= 0 ? q.lines[i] : null;
+    const left = `~${n} dropback${n === 1 ? "" : "s"} left (80% range ${Math.round(db.p10)}–${Math.round(db.p90)}${db.none >= 0.005 ? `; none in ${pct(db.none)}` : ""})` +
+      (L ? ` · ${Math.round(L.line - q.yds)} yds to ${L.line}+` : "");
+    const next = L && th.next ? `<div class="theta">After the next snap, ${L.line}+: ` + th.next.map((x) =>
+      `<span class="badge" title="${esc(`${x.outcome} (${pct(x.prob)} of next snaps): ` + q.lines.map((l, j) => `${l.line}+ ${pct(x.p[j])}`).join(", "))}">${esc(x.outcome)} ${pct(x.p[i])}</span>`).join("") +
+      ` <span class="muted">now ${pct(L.p)}</span></div>` : "";
+    return `<div class="theta muted">${left}</div>${next}`;
+  }
 
   function qbLines(d, q) {
     const m = market(d, q);

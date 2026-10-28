@@ -162,6 +162,26 @@ def test_quarters_add_up_to_the_final_but_overtime(replay):
     assert sum(q["home"] for q in post["quarters"]) == post["score"]["home"] == post["final"]["home"]
 
 
+
+@pytest.mark.slow
+def test_theta_groups_the_same_games_by_the_next_snap(replay):
+    from nflsim.data import load
+    from nflsim.live import app
+
+    m = app.LiveModel(load())
+    a = m.compute(next(g["event"] for g in espn.games() if g["state"] == "pre"), {})
+    for q in a["qbs"]:  # from kickoff: about as many dropbacks as real starters get (34 a game in 2025)
+        assert 28 < q["theta"]["dropbacks"]["mean"] < 42 and q["theta"]["dropbacks"]["none"] < 0.01
+    # before kickoff the next snap is the receiving team's
+    mine = [q for q in a["qbs"] if q["theta"]["next"]]
+    assert len(mine) == 1 and mine[0]["team"] == a["drive"]["team"]
+    nx = mine[0]["theta"]["next"]
+    assert math.isclose(sum(x["prob"] for x in nx), 1) and {x["outcome"] for x in nx} >= {"Completion", "Run"}
+    for j, line in enumerate(mine[0]["lines"]):  # the chance now is the outcomes' chances weighted by their shares
+        assert abs(sum(x["prob"] * x["p"][j] for x in nx) - line["p"]) < 0.02
+    after = {x["outcome"]: x["p"][app.LINES.index(250)] for x in nx}
+    assert after["Completion"] > after["Run"]
+
 def test_a_backup_throwing_the_latest_pass_marks_the_starter_out():
     sm = {"drives": {"previous": [
         {"team": {"abbreviation": "CAR"}, "plays": [{"text": "(Shotgun) B.Young pass short left to X for 5 yards"}]},
@@ -180,3 +200,14 @@ def test_local_pages_point_at_this_server():
     for page in (app.HOME, app.EDGES, app.WATCH):
         html = app._local(page).decode()
         assert '"/watch"' in html and '"watch.html"' not in html and '"summary.json"' not in html
+
+
+def test_the_team_scored_on_receives_even_after_a_timeout_hides_the_score():
+    s = {"kick": True, "period": 2, "display_clock": "5:37", "home": "PHI", "away": "DAL"}
+    td = {"scoringPlays": [{"team": {"abbreviation": "DAL"}, "type": {"text": "Passing Touchdown"},
+                            "period": {"number": 2}, "clock": {"displayValue": "5:37"}}]}
+    assert espn.kickoff_receiver(td, s) == "PHI"
+    safety = {"scoringPlays": [{"team": {"abbreviation": "PHI"}, "type": {"text": "Safety"},
+                                "period": {"number": 2}, "clock": {"displayValue": "5:37"}}]}
+    assert espn.kickoff_receiver(safety, s) == "PHI"  # the free kick goes to the team that scored
+    assert espn.kickoff_receiver(td, {**s, "display_clock": "4:10"}) is None  # plays since: not this score

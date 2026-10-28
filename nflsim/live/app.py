@@ -34,7 +34,7 @@ import pandas as pd
 
 from .. import kalshi
 from ..data import Dataset, load
-from ..sim import engine as E, pregame as PG, teams as TM
+from ..sim import coaches as CO, engine as E, pregame as PG, teams as TM
 from . import espn
 
 TEMPLATE = Path(__file__).with_name("live_template.html")
@@ -335,14 +335,16 @@ class LiveModel:
             lead = 0 if st["margin"] > 0 else (1 if st["margin"] < 0 else None)
             extra = {"ot": True, "post": post, "ot_poss0": lead == 0, "ot_poss1": lead == 1}
         h2 = s["h2_receiver"]
-        cols = [f"{c}{k}" for c in list(TM.METRICS) + ["delta", "mult"] for k in (0, 1)] + ["delta_sd"]
+        cols = [f"{c}{k}" for c in list(TM.METRICS) + ["delta", "mult", *CO.COLS] for k in (0, 1)
+                if f"{c}{k}" in an] + ["delta_sd"]
         row = {**st, **extra, "h2_receiver": h2, "pat": 0, **{c: float(an[c]) for c in cols}}
         for k, mu in ((0, an.mu0), (1, an.mu1)):
             fm, fs = TM.form_posterior([row[f"yds{k}"]], 0.0 if ot else row["clock"], [mu], su.noise)
             row[f"form_mean{k}"], row[f"form_sd{k}"] = float(np.ravel(fm)[0]), float(np.ravel(fs)[0])
         frame = pd.DataFrame([row])
         nxt = E.simulate(su.tb, frame, N_NEXT, seed=1, max_steps=1, record=True)
-        full_y, full_p, full_q = E.simulate(su.tb, frame, N_GAME, seed=2, points=True, quarters=True)
+        trace = {}
+        full_y, full_p, full_q = E.simulate(su.tb, frame, N_GAME, seed=2, points=True, quarters=True, trace=trace)
         def form_at(z0, z1):  # each QB's form fixed at its posterior mean + z sd
             cols = {}
             for k, z in ((0, z0), (1, z1)):
@@ -398,7 +400,8 @@ class LiveModel:
                        "median": float(np.median(fy)), "p10": float(np.percentile(fy, 10)),
                        "p90": float(np.percentile(fy, 90)),
                        "lines": [{"line": L, "p": float(np.mean(fy >= L)), "lo": float(np.mean(band_y[0, :, t] >= L)),
-                                  "hi": float(np.mean(band_y[1, :, t] >= L))} for L in LINES]})
+                                  "hi": float(np.mean(band_y[1, :, t] >= L))} for L in LINES],
+                       "theta": None if s["status"] == "post" else theta(fy, trace, t)})
         final_margin = st["margin"] + full_p[0, :, 0] - full_p[0, :, 1]
         home_win = float(np.mean(final_margin > 0) + 0.5 * np.mean(final_margin == 0))
         final = {"home": float(s["home_score"] + full_p[0, :, 0].mean()),
@@ -440,6 +443,35 @@ class LiveModel:
                 "line": {"spread": _f(an.get("spread")), "total": _f(an.get("total"))},
                 "raw": {k2: (_f(v) if isinstance(v, (float, np.floating)) else (bool(v) if isinstance(v, (bool, np.bool_)) else v))
                         for k2, v in st.items()}}
+
+
+# the next snap's result, as the QB pages group it (codes into engine.EVENTS); the rest is "Other"
+NEXT_GROUPS = {"Completion": (0, 11), "Incomplete": (1,), "Run": (5, 12), "Sack": (2,)}
+NEXT_MIN = 0.05   # outcomes in fewer of the simulated games than this go into "Other" (too few games to say)
+
+
+def theta(fy: np.ndarray, trace: dict, t: int) -> dict:
+    """What moves a QB's line chances: his dropbacks left (in the same simulated games as the chances) and, when his
+    team has the next snap, each line's chance by that snap's result (the same games grouped by it; their average,
+    weighted by share, is the chance now)."""
+    db = trace["dropbacks"][0, :, t]
+    out = {"dropbacks": {"mean": float(db.mean()), "none": float(np.mean(db == 0)),
+                         "p10": float(np.percentile(db, 10)), "p90": float(np.percentile(db, 90))}, "next": None}
+    mine = trace["first_pos"][0] == t
+    if mine.mean() < 0.5:
+        return out
+    ev, y = trace["first"][0][mine], fy[mine]
+    rows, other = [], np.ones(len(ev), bool)
+    for name, codes in NEXT_GROUPS.items():
+        g = np.isin(ev, codes)
+        if g.mean() >= NEXT_MIN:
+            rows.append((name, g))
+            other &= ~g
+    if other.mean() >= NEXT_MIN:
+        rows.append(("Other", other))
+    out["next"] = [{"outcome": name, "prob": float(g.mean()), "p": [float(np.mean(y[g] >= L)) for L in LINES]}
+                   for name, g in rows]
+    return out
 
 
 CARD = ("event", "home", "away", "status", "clock", "score", "now", "ball", "lastPlay", "homeWin", "final", "line",

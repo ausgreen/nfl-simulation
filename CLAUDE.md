@@ -57,7 +57,8 @@ calibration) -> vectorized simulation from any game state -> CLI replay or live 
   adds passers; `signature()` says when a game's state changed), `feed.py` (where ESPN responses come from:
   `Live`, `Recorder`, or `Replay` of a recording on a virtual clock; switch with `espn.use(...)`), `app.py` (stdlib
   `ThreadingHTTPServer`; `LiveModel.compute_state(state, overrides)` returns the current state, 5 most likely
-  next-snap states, the current drive's most likely outcomes (`simulate(..., drive=True)`), QB yardage chances, deterministically; `compute(event, overrides)` fetches then calls it;
+  next-snap states, the current drive's most likely outcomes (`simulate(..., drive=True)`), QB yardage chances and what moves them
+  (`theta`: dropbacks left and each line's chance after the next snap's result, from `simulate(..., trace=...)`), deterministically; `compute(event, overrides)` fetches then calls it;
   query-string overrides correct the feed's state; the page no longer has a form for them), `live_template.html` (the page).
 - `hosted/` — the web version (docs/hosting-plan.md). `worker.py`: `Worker.tick()` reads the scoreboard once
   (every 2 s while a game is in progress, `live_every`; sooner when `wake` is set, which a jump in a game's Kalshi
@@ -89,6 +90,11 @@ Modeled since 2026-10-16: accepted penalties that wipe out the play, timeouts, t
 since 2025; the live app infers whose OT possession it is from the score), strip-sack and return fumbles, return TDs,
 two-point tries and onside kicks (decisions learned by score and clock), score effects on pass results and gains.
 4th-down calls are a logistic regression (`tables.fourth_down_calls`); other calls a product of smoothed tables.
+Head coaches' end-of-game habits (`sim/coaches.py`, fit on the 10 seasons before the simulated one, shrunk to the
+league): pass rate leading / trailing by 1-16 in the last 5:00, the defense's timeouts then, starters pulled in 4th-
+quarter blowouts; engine columns `lead_pass`/`trail_pass`/`def_to`/`pull`, coaches from schedules.csv. 2025 backtest
+(272 games, Q4 states): QB-line Brier better in 92% of game resamples (mostly blowouts), win Brier in 85%; small gains,
+and they don't fix the late-game win overconfidence.
 Not modeled: penalties on plays that stand. The final score includes overtime; the
 quarter projections are regulation only. Regulation ends tied less often than real games do (3.6% vs 6.2%). Win
 chances are still somewhat overconfident in the 4th quarter (2025: 11 upsets where the model expected 4).

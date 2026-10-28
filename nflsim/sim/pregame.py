@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import os
 import pickle
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -18,7 +18,7 @@ import pandas as pd
 
 from ..data import Dataset
 from ..model.features import starter_games
-from . import data as D, engine as E, tables as T, teams as TM
+from . import coaches as CO, data as D, engine as E, tables as T, teams as TM
 
 WINDOW = 5
 LINES = list(range(125, 401, 25))
@@ -32,6 +32,8 @@ class Setup:
     ratings: pd.DataFrame        # per (game_id, team) before that game, plus game_id "next" = after the latest game
     noise: dict
     jac: np.ndarray
+    coaches: dict = field(default_factory=dict)  # head coach -> end-of-game habits (sim/coaches.py)
+    game_coaches: dict = field(default_factory=dict)  # game_id -> (home coach, away coach)
 
     def to_mult(self, mu):
         g, m = list(self.curve), list(self.curve.values())
@@ -71,7 +73,7 @@ def season_setup(ds: Dataset, season: int, starters: dict | None = None, cache: 
     pbp = [D.sim_pbp_dir(ds) / f"pbp_{s}.parquet" for s in range(season - WINDOW, season + 1)]
     pbp = [p for p in pbp if p.exists()]
     code = hashlib.md5(b"".join((Path(__file__).parent / m).read_bytes()
-                                for m in ("engine.py", "tables.py", "teams.py", "pregame.py"))).hexdigest()
+                                for m in ("engine.py", "tables.py", "teams.py", "pregame.py", "coaches.py"))).hexdigest()
     key = (code, tuple((p.name, p.stat().st_mtime) for p in pbp))
     path = ds.data_dir / "live" / f"sim_setup_{season}.pkl"
     if cache and path.exists():
@@ -90,7 +92,9 @@ def season_setup(ds: Dataset, season: int, starters: dict | None = None, cache: 
     jac = TM.efficiency_slope(tb)
     sched = pd.read_csv(ds.data_dir / "nflverse" / "schedules.csv")
     starts, tg = _noise_inputs(ds, season, sched)
-    setup = Setup(season, tb, curve, rt, {}, jac)
+    setup = Setup(season, tb, curve, rt, {}, jac, CO.fit(ds, season))
+    if "home_coach" in sched:
+        setup.game_coaches = {g: (h, a) for g, h, a in sched[sched.season == season][["game_id", "home_coach", "away_coach"]].itertuples(index=False)}
     if starts is not None and len(starts):
         setup.noise = TM.noise_scales(tb, setup.to_mult, starts, tg, jac)
     else:  # no walk-forward expectations on disk: typical values from reports 21 (2023-26)
@@ -120,7 +124,11 @@ def game_params(setup: Setup, games: pd.DataFrame, n: int = 500) -> pd.DataFrame
     rr = pd.concat(rows, ignore_index=True) if rows else rt.iloc[:0]
     params = TM.team_params(lookup, rr)
     params = params.merge(games[["game_id", "mu0", "mu1", "imp0", "imp1"]], on="game_id")
-    return TM.anchor(setup.tb, params, setup.to_mult, setup.jac, setup.noise, n=n)
+    an = TM.anchor(setup.tb, params, setup.to_mult, setup.jac, setup.noise, n=n)
+    coach = pd.DataFrame([{"game_id": g, **CO.columns(getattr(setup, "coaches", {}),
+                                                         *getattr(setup, "game_coaches", {}).get(g, (None, None)))}
+                          for g in an.game_id])
+    return an.merge(coach, on="game_id", how="left") if len(coach) else an
 
 
 def kickoff_frame(an: pd.DataFrame) -> pd.DataFrame:
@@ -157,7 +165,8 @@ def pregame(setup: Setup, an: pd.DataFrame, n: int = 5000, seed: int = 0, lines=
 def replay(setup: Setup, an: pd.DataFrame, states: pd.DataFrame, n: int = 5000, seed: int = 1) -> pd.DataFrame:
     """In-game probabilities from game states (nflsim/sim/states.py rows, with starter0/1 and game_id)."""
     mu = an.set_index("game_id")[["mu0", "mu1"]]
-    cols = [f"{c}{k}" for c in list(TM.METRICS) + ["delta", "mult"] for k in (0, 1)] + ["delta_sd"]
+    cols = [f"{c}{k}" for c in list(TM.METRICS) + ["delta", "mult", *CO.COLS] for k in (0, 1)] + ["delta_sd"]
+    cols = [c for c in cols if c in an.columns]
     x = states.drop(columns=[c for c in cols if c in states.columns]).merge(an[["game_id"] + cols], on="game_id")
     for k in (0, 1):
         fm, fs = TM.form_posterior(x[f"yds{k}"], x.clock, mu.loc[x.game_id, f"mu{k}"].to_numpy(), setup.noise)
