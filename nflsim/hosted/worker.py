@@ -349,8 +349,10 @@ class Worker:
             except Exception as e:  # the page keeps the last prices
                 self.log(f"prices: {type(e).__name__}: {e}")
         self.interval = self._interval(games, now)
+        skew = time.time() - now  # a replay's virtual clock runs behind the viewer's: the pages correct for it
         self.put_json("status.json", {
             "updated": _iso(now), "every": self.interval, "live": sum(g["state"] == "in" for g in games),
+            **({"skew": round(skew)} if abs(skew) > 60 else {}),
             "errors": {ev: t.error for ev, t in self.games.items() if t.error},
             "data": {"stats": _iso(self.refreshed) if self.refreshed else None,
                      "projections": _iso(self.projected) if self.projected else None}})

@@ -6,7 +6,7 @@
 <title>Model vs Kalshi</title>
 <style>
 :root {
-  --bg: #f4f5f2; --surface: #ffffff; --ink: #18211c; --ink-2: #4a554e; --ink-3: #7b857f;
+  --bg: #f4f5f2; --surface: #ffffff; --ink: #18211c; --ink-2: #4a554e; --ink-3: #646e68;
   --rule: #d9ddd8; --rule-2: #eceee9; --accent: #1d6b48; --accent-wash: #e3f0e8; --warn: #9a5b00; --warn-wash: #fff3dc;
   --bar: #1d6b48; --bar-2: #c9d9cf; --link: #1a5c9e;
   --font: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, monospace;
@@ -27,10 +27,10 @@
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font); }
 a { color: var(--link); text-underline-offset: 2px; }
 a:hover { text-decoration-thickness: 2px; }
-.app { max-width: 1200px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; }
+.app { max-width: 1200px; margin: 0 auto; padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 header.site { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 20px; border-bottom: 1px solid var(--rule); }
 .brand { font-size: 18px; font-weight: 700; letter-spacing: .02em; padding-bottom: 8px; }
-.tabs { display: flex; gap: 2px; overflow-x: auto; }
+.tabs { display: flex; gap: 2px; overflow-x: auto; min-width: 0; max-width: 100%; }
 .tabs a { padding: 8px 12px; color: var(--ink-2); text-decoration: none; font-weight: 600; white-space: nowrap;
   border-bottom: 3px solid transparent; margin-bottom: -1px; }
 .tabs a:hover { color: var(--ink); }
@@ -39,6 +39,11 @@ header.site { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 20
 .flash { animation: flash 1.6s ease-out; }
 .beat { width: 9px; height: 9px; border-radius: 50%; background: var(--rule); align-self: center; margin-left: auto; }
 .beat.flash { animation: beat 1.6s ease-out; }
+@media (max-width: 620px) {  /* all four tabs fit, and the dot doesn't take a line of its own */
+  header.site { position: relative; }
+  .tabs a { padding: 8px 7px; font-size: 13px; }
+  .beat { position: absolute; right: 0; top: 8px; }
+}
 @keyframes beat { from { background: var(--accent); box-shadow: 0 0 0 5px var(--accent-wash); } }
 header.top { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; justify-content: space-between; }
 h1 { margin: 0; font-size: 17px; letter-spacing: .02em; }
@@ -60,6 +65,7 @@ td.r, th.r { text-align: right; }
 .bar .rng, .gap .rng { position: absolute; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%;
   background: var(--ink); }
 .rng-key { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ink); margin: 0 2px 1px 0; }
+.clear { font: 600 11px var(--font); color: var(--accent); background: var(--accent-wash); border-radius: 999px; padding: 0 6px; }
 .gap b { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--warn); }
 .err { color: var(--warn); }
 button.watch { font: inherit; font-size: 12px; color: var(--ink-2); background: none; border: 1px solid var(--rule); border-radius: 999px;
@@ -67,6 +73,26 @@ button.watch { font: inherit; font-size: 12px; color: var(--ink-2); background: 
 button.watch[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); font-weight: 600; }
 footer { color: var(--ink-3); font-size: 12.5px; display: grid; gap: 6px; }
 footer p { margin: 0; }
+@media (max-width: 620px) {  /* a card per bet: on a phone the price and the gap can't sit off-screen */
+  .panel thead { display: none; }
+  .panel table, .panel tbody { display: block; }
+  #rows tr { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px 8px; padding: 10px 0; border-bottom: 1px solid var(--rule-2); }
+  #rows td { border: 0; padding: 0; white-space: normal; text-align: left; }
+  #rows td[colspan] { grid-column: 1 / -1; }
+  #rows td:nth-child(1) { grid-column: span 3; order: 1; }
+  #rows td:nth-child(10) { order: 2; text-align: right; }
+  #rows td:nth-child(2) { grid-column: span 2; order: 3; }
+  #rows td:nth-child(4) { grid-column: span 2; order: 4; text-align: right; }
+  #rows td:nth-child(3) { grid-column: 1 / -1; order: 5; }
+  #rows td.idle { display: none; }
+  #rows td:nth-child(3)::before { content: "Now "; color: var(--ink-3); font-size: 11px; }
+  #rows td:nth-child(7) { grid-column: 1 / -1; order: 6; }
+  #rows td:nth-child(5) { order: 7; } #rows td:nth-child(6) { order: 8; } #rows td:nth-child(8) { order: 9; } #rows td:nth-child(9) { order: 10; }
+  #rows td:nth-child(5)::before, #rows td:nth-child(6)::before, #rows td:nth-child(8)::before, #rows td:nth-child(9)::before {
+    display: block; color: var(--ink-3); font-size: 11px; font-weight: 600; }
+  #rows td:nth-child(5)::before { content: "Model"; } #rows td:nth-child(6)::before { content: "Price"; }
+  #rows td:nth-child(8)::before { content: "Gap"; } #rows td:nth-child(9)::before { content: "Return"; }
+}
 </style>
 </head>
 <body>
@@ -81,6 +107,8 @@ footer p { margin: 0; }
     <div class="controls">
       <label>Markets <select id="kind"><option value="yards">QB passing yards</option><option value="scores">Score</option><option value="all">All</option></select></label>
       <label>Games <select id="which"><option value="all">live and upcoming</option><option value="in">live only</option><option value="pre">upcoming only</option></select></label>
+      <label>Bets <select id="favor"><option value="pos">positive return after fees</option><option value="all">both sides</option></select></label>
+      <label>Lines <select id="ladder"><option value="best">best per market</option><option value="all">every line</option></select></label>
       <label>Show <select id="top"><option value="15">top 15</option><option value="30" selected>top 30</option><option value="1000">all</option></select></label>
       <span class="muted" id="updated"></span>
     </div>
@@ -94,13 +122,17 @@ footer p { margin: 0; }
     </table>
   </section>
   <footer>
-    <p>Each Kalshi line priced both ways: buying yes at the ask, or no at 1 − the bid (the price to bet the QB stays under,
-      or against a score market).
-      Gap = the model's chance of that side winning minus its price. Return = expected profit per $1, after Kalshi's taker fee
-      (7% × price × (1 − price), rounded up to the cent, per contract). Lines already decided (the QB is past them) and games
-      that are over are left out; so are prices of 1¢ or 99¢ and up. Dots on the bar and the range under Gap: the likely
-      range of the chance (the model's chance with the QBs' form at its low and high end). Score markets: the game, each half and quarter (quarters don't count
-      overtime; the 2nd half and the game do); a tied game pays half on either team. For information only.</p>
+    <p><b>Bet:</b> each Kalshi line can be bought two ways: yes at the ask, or no at 1 − the bid (the QB stays under, or
+      against a score market). "Positive return after fees" lists only bets with a positive Return. "Best per market" keeps each QB's or market's
+      largest gap on each side, because its lines move together.</p>
+    <p><b>Gap</b> = the model's chance of that side winning minus its price; the range under it and the dots on the bar
+      are the gap with the QBs' form at the low and high end of its likely range. <span class="clear">clear</span> means
+      the whole range is above the price. <b>Return</b> = expected profit per $1 after Kalshi's taker fee (7% × price ×
+      (1 − price), rounded up to the cent, per contract). It assumes the model's chance is right; these gaps have not been graded
+      against results yet, so treat them as questions, not bets.</p>
+    <p>Left out: lines already decided, games that are over, and prices of 1¢ or 99¢ and up. Score markets cover the
+      game, each half and quarter; quarters don't count overtime, the 2nd half and the game do; a tied game pays half on
+      either team. For information only.</p>
   </footer>
 </div>
 
@@ -111,7 +143,7 @@ footer p { margin: 0; }
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const pct = (x) => (x * 100).toFixed(0) + "%";
   const cents = (x) => Math.round(x * 100) + "¢";
-  const signed = (x, d = 0) => (x >= 0 ? "+" : "−") + Math.abs(x).toFixed(d);
+  const signed = (x, d = 0) => { const r = Number(x.toFixed(d)); return (r > 0 ? "+" : r < 0 ? "−" : "±") + Math.abs(r).toFixed(d); };
   const getJSON = async (path) => {
     const r = await fetch(path, { cache: "no-cache" });
     if (!r.ok) throw new Error(r.statusText);
@@ -214,12 +246,12 @@ footer p { margin: 0; }
     return `<tr data-key="${esc(`${g.event}-${b.key}-${b.side}`)}">
       <td><a href="${GAME}?event=${encodeURIComponent(g.event)}">${esc(g.away)} @ ${esc(g.home)}</a> ${when}</td>
       <td>${market}</td>
-      <td class="r num">${!live ? "—" : b.q ? Math.round(b.q.yds) : partNow(g, b.m.part)}</td>
+      <td class="r num${live ? "" : " idle"}">${!live ? "—" : b.q ? Math.round(b.q.yds) : partNow(g, b.m.part)}</td>
       <td><span class="side ${b.side}">${bet}</span></td>
       <td class="r num" title="${b.lo == null ? "" : `likely range ${pct(b.lo)}–${pct(b.hi)}`}">${pct(b.p)}</td>
       <td class="r num"><a href="${esc(b.m.url)}" target="_blank" rel="noopener">${cents(b.price)}</a></td>
       <td><div class="gap" title="model ${pct(b.p)} vs price ${cents(b.price)}"><i style="left:${(lo * 100).toFixed(1)}%;width:${((hi - lo) * 100).toFixed(1)}%"></i><b style="left:${(b.price * 100).toFixed(1)}%"></b>${b.lo == null ? "" : [b.lo, b.hi].map((x) => `<span class="rng" style="left:${(x * 100).toFixed(1)}%"></span>`).join("")}</div></td>
-      <td class="r num">${signed(b.gap * 100)} pts${b.lo == null ? "" : `<br><span class="muted" style="font-size:11.5px">${signed((b.lo - b.price) * 100)} to ${signed((b.hi - b.price) * 100)}</span>`}</td>
+      <td class="r num">${b.lo != null && b.lo > b.price ? `<span class="clear" title="Even with the QBs' form at the unfavorable end of its likely range, the model's chance is above the price">clear</span> ` : ""}${signed(b.gap * 100)} pts${b.lo == null ? "" : `<br><span class="muted" style="font-size:11.5px">${signed((b.lo - b.price) * 100)} to ${signed((b.hi - b.price) * 100)}</span>`}</td>
       <td class="r num">${signed(b.ret * 100)}%</td><td>${watchButton(entryOf(b))}</td></tr>`;
   }
   const entryOf = (b) => ({ side: b.side, ...(b.q ? { t: (b.m.lines[b.line] || {}).ticker, ev: b.g.event, type: "yards", team: b.q.team, qb: b.q.qb, line: b.line }
@@ -260,12 +292,19 @@ footer p { margin: 0; }
 
   function show(cards, prices) {
     const which = $("which").value;
-    const all = bets(cards.filter((g) => which === "all" || g.state === which), prices || {}, $("kind").value);
+    const priced = bets(cards.filter((g) => which === "all" || g.state === which), prices || {}, $("kind").value);
+    const kept = $("favor").value === "pos" ? priced.filter((b) => b.ret > 0) : priced;
+    // one QB's or one market's lines rise and fall together: they are one opinion, so list its largest gap
+    const seenLadder = new Set();
+    const all = $("ladder").value === "all" ? kept : kept.filter((b) => {
+      const k = [b.g.event, b.side, b.q ? b.q.team : `${b.m.part}-${b.m.kind}-${b.m.team}`].join("|");
+      return !seenLadder.has(k) && seenLadder.add(k);
+    });
     const shown = all.slice(0, Number($("top").value));
     $("rows").innerHTML = shown.map(row).join("") ||
-      `<tr><td colspan="10" class="muted">No Kalshi prices to compare right now.</td></tr>`;
+      `<tr><td colspan="10" class="muted">${priced.length ? "No bet has a positive expected return after fees right now." : "No Kalshi prices to compare right now."}</td></tr>`;
     cue("#rows tr");
-    $("updated").textContent = `${all.length} prices · updated ${new Date().toLocaleTimeString()}`;
+    $("updated").textContent = `${all.length} of ${priced.length} prices · updated ${new Date().toLocaleTimeString()}`;
   }
 
   let busy = false, cards = null, prices = null;
@@ -277,6 +316,7 @@ footer p { margin: 0; }
       show(cards, prices);
     } catch (e) {
       $("updated").innerHTML = `<span class="err">Update failed: ${esc(e.message)}</span>`;
+      if (!cards) $("rows").innerHTML = `<tr><td colspan="10" class="err">Couldn't load the prices. Trying again.</td></tr>`;
     } finally { busy = false; }
   }
 
@@ -285,7 +325,7 @@ footer p { margin: 0; }
     if (cards) show(cards, prices);
   });
 
-  for (const id of ["kind", "which", "top"]) {
+  for (const id of ["kind", "which", "favor", "ladder", "top"]) {
     const saved = store.get("edges:" + id);
     if (saved && [...$(id).options].some((o) => o.value === saved)) $(id).value = saved;
     $(id).addEventListener("change", () => { store.set("edges:" + id, $(id).value); cards ? show(cards, prices) : refresh(true); });

@@ -6,7 +6,7 @@
 <title>Watch list</title>
 <style>
 :root {
-  --bg: #f4f5f2; --surface: #ffffff; --ink: #18211c; --ink-2: #4a554e; --ink-3: #7b857f;
+  --bg: #f4f5f2; --surface: #ffffff; --ink: #18211c; --ink-2: #4a554e; --ink-3: #646e68;
   --rule: #d9ddd8; --rule-2: #eceee9; --accent: #1d6b48; --accent-wash: #e3f0e8; --warn: #9a5b00; --warn-wash: #fff3dc;
   --bar: #1d6b48; --bar-2: #c9d9cf; --link: #1a5c9e;
   --font: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, monospace;
@@ -27,10 +27,10 @@
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font); }
 a { color: var(--link); text-underline-offset: 2px; }
 a:hover { text-decoration-thickness: 2px; }
-.app { max-width: 1200px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; }
+.app { max-width: 1200px; margin: 0 auto; padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 header.site { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 20px; border-bottom: 1px solid var(--rule); }
 .brand { font-size: 18px; font-weight: 700; letter-spacing: .02em; padding-bottom: 8px; }
-.tabs { display: flex; gap: 2px; overflow-x: auto; }
+.tabs { display: flex; gap: 2px; overflow-x: auto; min-width: 0; max-width: 100%; }
 .tabs a { padding: 8px 12px; color: var(--ink-2); text-decoration: none; font-weight: 600; white-space: nowrap;
   border-bottom: 3px solid transparent; margin-bottom: -1px; }
 .tabs a:hover { color: var(--ink); }
@@ -39,6 +39,11 @@ header.site { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 20
 .flash { animation: flash 1.6s ease-out; }
 .beat { width: 9px; height: 9px; border-radius: 50%; background: var(--rule); align-self: center; margin-left: auto; }
 .beat.flash { animation: beat 1.6s ease-out; }
+@media (max-width: 620px) {  /* all four tabs fit, and the dot doesn't take a line of its own */
+  header.site { position: relative; }
+  .tabs a { padding: 8px 7px; font-size: 13px; }
+  .beat { position: absolute; right: 0; top: 8px; }
+}
 @keyframes beat { from { background: var(--accent); box-shadow: 0 0 0 5px var(--accent-wash); } }
 header.top { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; justify-content: space-between; }
 h1 { margin: 0; font-size: 17px; letter-spacing: .02em; }
@@ -80,6 +85,28 @@ td input { width: 64px; text-align: right; font-family: var(--mono); }
 button.remove { font: inherit; font-size: 12px; color: var(--ink-2); background: none; border: 1px solid var(--rule); border-radius: 999px;
   padding: 1px 8px; cursor: pointer; }
 .closed { color: var(--ink-3); font-size: 12px; }
+@media (max-width: 620px) {  /* a card per line: on a phone the prices and P/L can't sit off-screen */
+  .panel thead { display: none; }
+  .panel table, .panel tbody { display: block; }
+  #rows tr { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px 8px; padding: 10px 0; border-bottom: 1px solid var(--rule-2); }
+  #rows td { border: 0; padding: 0; white-space: normal; text-align: left; }
+  #rows td[colspan] { grid-column: 1 / -1; }
+  #rows td input { width: 100%; }
+  #rows td:nth-child(1) { grid-column: span 3; order: 1; }
+  #rows td:nth-child(13) { order: 2; text-align: right; }
+  #rows td:nth-child(2) { grid-column: span 3; order: 3; }
+  #rows td:nth-child(3) { order: 4; text-align: right; }
+  #rows td:nth-child(10) { grid-column: 1 / -1; order: 5; }
+  #rows td:nth-child(5) { order: 6; } #rows td:nth-child(6) { order: 7; } #rows td:nth-child(7) { order: 8; } #rows td:nth-child(8) { order: 9; }
+  #rows td:nth-child(9) { order: 10; } #rows td:nth-child(4) { order: 11; } #rows td:nth-child(11) { order: 12; } #rows td:nth-child(12) { order: 13; }
+  #rows td:nth-child(4)::before, #rows td:nth-child(5)::before, #rows td:nth-child(6)::before, #rows td:nth-child(7)::before,
+  #rows td:nth-child(8)::before, #rows td:nth-child(9)::before, #rows td:nth-child(11)::before, #rows td:nth-child(12)::before {
+    display: block; color: var(--ink-3); font-size: 11px; font-weight: 600; }
+  #rows td:nth-child(4)::before { content: "Now"; } #rows td:nth-child(5)::before { content: "Contracts"; }
+  #rows td:nth-child(6)::before { content: "Paid ¢"; } #rows td:nth-child(7)::before { content: "Buy"; }
+  #rows td:nth-child(8)::before { content: "Sell"; } #rows td:nth-child(9)::before { content: "Model"; }
+  #rows td:nth-child(11)::before { content: "P/L now"; } #rows td:nth-child(12)::before { content: "Model P/L"; }
+}
 </style>
 </head>
 <body>
@@ -210,6 +237,8 @@ button.remove { font: inherit; font-size: 12px; color: var(--ink-2); background:
   let cards = [], prices = {};
   function draw() {
     const list = watchStore.all(), idx = priceIndex(prices);
+    // the rows are rebuilt: keep the field being typed in, with what's typed so far
+    const a = document.activeElement, typing = a && a.matches("#rows input") ? { t: a.dataset.t, f: a.dataset.f, v: a.value, at: a.selectionStart } : null;
     const tot = { paid: 0, now: 0, model: 0, pays: 0, held: 0 };
     $("rows").innerHTML = list.map((e) => {
       const k = idx[e.t], m = model(e, cards), yes = e.side !== "no";
@@ -239,11 +268,15 @@ button.remove { font: inherit; font-size: 12px; color: var(--ink-2); background:
     $("totals").innerHTML = [["Watching", String(list.length), ""], ["Positions", String(tot.held), ""], ["Paid", money(tot.paid), ""],
       ["P/L now", signedMoney(tot.now), tone(tot.now)], ["Model P/L", signedMoney(tot.model), tone(tot.model)],
       ["Pays if all win", money(tot.pays), ""]].map(([l, v, c]) => `<div data-key="${l}"><span class="lbl">${l}</span><span class="v ${c}">${v}</span></div>`).join("");
+    if (typing) {
+      const el = [...document.querySelectorAll("#rows input")].find((x) => x.dataset.t === typing.t && x.dataset.f === typing.f);
+      if (el) { el.value = typing.v; el.focus(); el.setSelectionRange(typing.at, typing.at); }
+    }
     cue("#rows tr", "#totals div");
     $("updated").textContent = `updated ${new Date().toLocaleTimeString()}`;
   }
 
-  // edits: kept as typed (the inputs aren't redrawn while one has focus)
+  // edits: saved when a field is left; redrawn just after, once focus has reached whatever was clicked or tabbed to
   function edit(t, field, value) {
     const list = watchStore.all(), e = list.find((x) => x.t === t);
     if (!e) return;
@@ -252,7 +285,10 @@ button.remove { font: inherit; font-size: 12px; color: var(--ink-2); background:
   }
   $("rows").addEventListener("change", (ev) => {
     const el = ev.target.closest("[data-f]");
-    if (el) { edit(el.dataset.t, el.dataset.f, el.value); draw(); }
+    if (!el) return;
+    edit(el.dataset.t, el.dataset.f, el.value);
+    if (el.matches("select")) el.blur();  // a focused side menu would hold back every update
+    setTimeout(draw, 200);
   });
   $("rows").addEventListener("click", (ev) => {
     const b = ev.target.closest("button.remove");
@@ -261,7 +297,7 @@ button.remove { font: inherit; font-size: 12px; color: var(--ink-2); background:
     draw();
   });
   window.addEventListener("storage", (ev) => { if (ev.key === WATCH_KEY && !editing()) draw(); });  // another tab changed it
-  const editing = () => document.activeElement && document.activeElement.matches("#rows input, #rows select");
+  const editing = () => document.activeElement && document.activeElement.matches("#rows select");  // redrawing would close an open menu
 
   // pushed updates from the worker (Server-Sent Events) when it offers them; the page polls only while none arrive
   const EVENTS = "events";

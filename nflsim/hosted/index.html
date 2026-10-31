@@ -6,7 +6,7 @@
 <title>Live Game Companion</title>
 <style>
 :root {
-  --bg: #f4f5f2; --surface: #ffffff; --ink: #18211c; --ink-2: #4a554e; --ink-3: #7b857f;
+  --bg: #f4f5f2; --surface: #ffffff; --ink: #18211c; --ink-2: #4a554e; --ink-3: #646e68;
   --rule: #d9ddd8; --rule-2: #eceee9; --accent: #1d6b48; --accent-wash: #e3f0e8; --warn: #9a5b00; --warn-wash: #fff3dc;
   --bar: #1d6b48; --bar-2: #c9d9cf; --link: #1a5c9e;
   --font: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, monospace;
@@ -27,10 +27,10 @@
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font); }
 a { color: var(--link); text-underline-offset: 2px; }
 a:hover { text-decoration-thickness: 2px; }
-.app { max-width: 1200px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; }
+.app { max-width: 1200px; margin: 0 auto; padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 header.site { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 20px; border-bottom: 1px solid var(--rule); }
 .brand { font-size: 18px; font-weight: 700; letter-spacing: .02em; padding-bottom: 8px; }
-.tabs { display: flex; gap: 2px; overflow-x: auto; }
+.tabs { display: flex; gap: 2px; overflow-x: auto; min-width: 0; max-width: 100%; }
 .tabs a { padding: 8px 12px; color: var(--ink-2); text-decoration: none; font-weight: 600; white-space: nowrap;
   border-bottom: 3px solid transparent; margin-bottom: -1px; }
 .tabs a:hover { color: var(--ink); }
@@ -39,10 +39,15 @@ header.site { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 20
 .flash { animation: flash 1.6s ease-out; }
 .beat { width: 9px; height: 9px; border-radius: 50%; background: var(--rule); align-self: center; margin-left: auto; }
 .beat.flash { animation: beat 1.6s ease-out; }
+@media (max-width: 620px) {  /* all four tabs fit, and the dot doesn't take a line of its own */
+  header.site { position: relative; }
+  .tabs a { padding: 8px 7px; font-size: 13px; }
+  .beat { position: absolute; right: 0; top: 8px; }
+}
 @keyframes beat { from { background: var(--accent); box-shadow: 0 0 0 5px var(--accent-wash); } }
 header.top { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; justify-content: space-between; }
 h1 { margin: 0; font-size: 17px; letter-spacing: .02em; }
-h2 { margin: 6px 0 0; font-size: 15px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); }
+h2 { margin: 12px 0 0; font-size: 15px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); }
 .muted { color: var(--ink-3); }
 .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 12px; }
@@ -114,15 +119,26 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     if (changed) restart($("beat"));
   }
 
+  // a finished game against the pregame line: "DAL −9.5 · TB covered · under 49.5"
+  function result(g, a, h) {
+    const l = g.line || {};
+    if (l.spread == null) return "";
+    const fav = l.spread > 0 ? g.home : g.away, dog = fav === g.home ? g.away : g.home, s = Math.abs(l.spread);
+    const favBy = l.spread > 0 ? h - a : a - h;
+    const cover = favBy === s ? "push" : `${esc(favBy > s ? fav : dog)} covered`;
+    const total = l.total == null ? "" : ` · ${a + h === l.total ? "push" : a + h > l.total ? "over" : "under"} ${l.total}`;
+    return `<div class="muted">${esc(fav)} −${s} · ${cover}${total}</div>`;
+  }
+
   function card(g) {
     const live = g.state === "in", done = g.state === "post";
     const as = g.score ? g.score.away : g.awayScore, hs = g.score ? g.score.home : g.homeScore;
-    const side = (t, sc) => `<span${g.ball && g.ball.team === t ? ` class="has" title="${esc(t)} has the ball"` : ""}>${esc(t)}${g.state === "pre" ? "" : " " + sc}</span>`;
+    const side = (t, sc) => `<span${g.state !== "pre" && g.ball && g.ball.team === t ? ` class="has" title="${esc(t)} has the ball"` : ""}>${esc(t)}${g.state === "pre" ? "" : " " + sc}</span>`;
     const status = live ? `<span class="live-tag">LIVE</span> · ${esc(g.detail)}` : done ? esc(g.detail) : esc(kickoff(g.kickoff));
     const line = g.line && g.line.spread != null
       ? `${esc(g.home)} ${g.line.spread > 0 ? "−" + g.line.spread : "+" + Math.abs(g.line.spread)} · total ${g.line.total}` : "";
     const sit = live ? `<div class="sit">${esc(g.ball ? `${g.ball.team} ${g.ball.kick ? "receives · kickoff next" : "ball · " + g.ball.situation}` : g.now)}</div>
-        <div class="last">${esc(g.lastPlay || "")}</div>` : done || !line ? "" : `<div class="muted">${line}</div>`;
+        <div class="last">${esc(g.lastPlay || "")}</div>` : done ? result(g, as, hs) : !line ? "" : `<div class="muted">${line}</div>`;
     let wp = "";
     if (g.homeWin != null && !done) {
       const aw = 1 - g.homeWin;
@@ -134,10 +150,15 @@ footer { color: var(--ink-3); font-size: 12.5px; }
       wp = `<div class="muted">No projection yet.</div>`;
     }
     const qbs = (g.qbs || []).map((q) => {
-      const name = `${esc(last(q.qb) || q.team)} <span class="muted">${esc(q.team)}</span>${q.out ? ` <span class="badge">may be out</span>` : ""}`;
-      const proj = done ? "" : g.state === "pre" ? ` · median <b class="num">${Math.round(q.median)}</b> (${Math.round(q.p10)}–${Math.round(q.p90)})`
-        : ` → median <b class="num">${Math.round(q.median)}</b> (${Math.round(q.p10)}–${Math.round(q.p90)})`;
-      return `<div>${name}: ${g.state === "pre" ? "" : `<b class="num">${Math.round(q.yds)}</b> yds`}${proj}</div>`;
+      const name = `${esc(last(q.qb) || q.team)} <span class="muted">${esc(q.team)}</span>`;
+      const range = q.median == null ? "" : `median <b class="num">${Math.round(q.median)}</b> (${Math.round(q.p10)}–${Math.round(q.p90)})`;
+      const diff = q.mu == null ? null : Math.round(q.yds - q.mu);
+      const yards = `<b class="num">${Math.round(q.yds)}</b> yds`;
+      const body = g.state === "pre" ? range
+        : done ? yards + (diff == null ? "" : ` <span class="muted">vs ${Math.round(q.mu)} expected (${diff >= 0 ? "+" : "−"}${Math.abs(diff)})</span>`)
+        : `${yards} → ${range}`;
+      const flag = q.out ? ` <span class="badge">${done ? "replaced" : "may be out"}</span>` : "";
+      return `<div>${name}: ${body}${flag}</div>`;
     }).join("");
     return `<a class="card${live ? " live" : ""}" data-key="${esc(g.event)}" href="${GAME}?event=${encodeURIComponent(g.event)}">
       <div class="row"><span class="teams">${side(g.away, as)} – ${side(g.home, hs)}</span><span class="status">${status}</span></div>
@@ -170,7 +191,7 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     render(cards);
     cue(".card");
     $("updated").textContent = `updated ${new Date().toLocaleTimeString()}`;
-    const behind = st ? (Date.now() - Date.parse(st.updated)) / 1000 : 0;
+    const behind = st ? (Date.now() - Date.parse(st.updated)) / 1000 - (st.skew || 0) : 0;
     const limit = st ? Math.max(STALE_S, 2.5 * (st.every || 0)) : Infinity;
     const stats = st && st.data && st.data.stats ? (Date.now() - Date.parse(st.data.stats)) / 1000 : 0;
     $("stale").hidden = behind <= limit && stats <= STATS_S;
@@ -187,6 +208,7 @@ footer { color: var(--ink-3); font-size: 12.5px; }
       show(cards, status);
     } catch (e) {
       $("updated").innerHTML = `<span class="err">Update failed: ${esc(e.message)}</span>`;
+      if (!cards) $("games").innerHTML = `<span class="err">Couldn't load this week's games. Trying again.</span>`;
     } finally { busy = false; }
   }
 

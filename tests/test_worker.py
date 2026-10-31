@@ -99,6 +99,7 @@ def test_first_tick_publishes_page_games_state_and_status(tmp_path, model, repla
     assert post["now"] == "Final" and post["homeWin"] in (0.0, 1.0)
     status = json.loads((site / "status.json").read_text())
     assert status["errors"] == {} and status["live"] == 0
+    assert status["skew"] > 60  # a replay's clock runs behind the viewer's, and the pages correct for it
     cards = {c["event"]: c for c in json.loads((site / "summary.json").read_text())}
     assert cards[PRE]["homeWin"] == pre["homeWin"] and len(cards[PRE]["qbs"]) == 2 and cards[POST]["state"] == "post"
     assert (site / "game.html").read_bytes() == GAME_PAGE.read_bytes()

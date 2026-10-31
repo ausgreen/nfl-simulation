@@ -30,6 +30,8 @@ dist/
 # Regenerable caches (simulator set-up and weekly v3 predictions rebuild on first use)
 data/live/*
 !data/live/wf_rows.parquet
+# Open-Meteo forecasts, re-downloaded when missing
+data/weather/recent/*.csv
 
 # Recorded ESPN feeds (large; tests/fixtures/ holds the small ones tests use)
 recordings/

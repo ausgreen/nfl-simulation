@@ -113,6 +113,9 @@ chances are still somewhat overconfident in the 4th quarter (2025: 11 upsets whe
 
 ## Plans
 
+`docs/decisions.md`: decisions from the page-quality pass (branch `app-quality`). `live/live_template.html` (local
+app) and `hosted/game.html` are near copies: change both.
+
 `docs/hosting-plan.md`: host the live companion as a single worker that polls ESPN, re-simulates only on state
 changes, and writes static JSON to a CDN bucket. No corrections in the hosted version. Phases 1–2 (fetch/compute
 split, recorder, replay, worker, local publisher, static page) are built; phase 3 (R2 publisher, Docker,
