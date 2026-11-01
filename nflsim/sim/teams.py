@@ -53,7 +53,7 @@ def play_residuals(tb: T.Tables, s: pd.DataFrame) -> pd.DataFrame:
     if tb.run_shift is not None:
         rm = rm + tb.run_shift[T.script_cell(s.c, s.s)]
     out["run"] = np.where(s.call == "run", s.gain - rm, np.nan)
-    em = tb.elapsed.means()[tb.elapsed.cell(cat=s.cat, tox=s.tox, c=s.c, s3=s.s3)]
+    em = tb.elapsed.means()[tb.elapsed.cell(cat=s.cat, tox=s.tox, c=s.c, s3=s.s3, tlo=s.tlo)]
     normal = s.c.isin([0, 2]).to_numpy() & np.isin(s.cat, [0, 1, 2]) & s.has_next.to_numpy()
     out["pace"] = np.where(normal, s.elapsed - em, np.nan)
     return out

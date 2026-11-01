@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-DIMS = {"d": 4, "t": 5, "z": 8, "c": 10, "s": 7, "s3": 3, "cat": 11, "fgz": 13, "zc": 16, "zg": 39, "tox": 3, "tlo": 4, "tld": 4, "mt": 41}
+DIMS = {"d": 4, "t": 5, "z": 8, "c": 12, "s": 9, "s3": 3, "cat": 11, "fgz": 13, "zc": 16, "zg": 39, "tox": 3, "tlo": 4, "tld": 4, "mt": 41}
 T_EDGES = [1, 3, 6, 10]                       # togo <=1, <=3, <=6, <=10, else
 Z_EDGES = [5, 10, 20, 35, 50, 65, 80]         # yardline_100 <=5, ..., else (81-99)
 # finer zones inside z for the play call, where kick-or-punt flips within a few yards (each nests in one z bin)
@@ -28,7 +28,7 @@ ZC_EDGES = [5, 10, 20, 25, 30, 33, 35, 37, 39, 41, 44, 47, 50, 65, 80]
 # finer zones inside z for gains: a gain can't exceed the distance to the goal, so pooling plays from a wide zone
 # cut short the gains (and touchdowns) of plays from its far end. Each yard inside the 20, wider farther out.
 ZG_EDGES = list(range(1, 21)) + [22, 24, 26, 28, 30, 32, 35, 38, 41, 44, 47, 50, 55, 60, 65, 72, 80, 90]
-S_EDGES = [-17, -9, -1, 0, 8, 16]             # margin <=-17, <=-9, <=-1, ==0, <=8, <=16, else
+S_EDGES = [-17, -9, -4, -1, 0, 3, 8, 16]      # margin <=-17, <=-9, <=-4, <=-1, ==0, <=3, <=8, <=16, else
 
 CALLS = ["pass", "run", "punt", "fg", "kneel", "spike", "pen"]   # pen: an accepted penalty, no play
 PASS_OUT = ["comp", "inc", "sack", "int", "int_td", "comp_fum", "sack_fum"]
@@ -56,7 +56,7 @@ def zg_bin(yl):
 
 
 def s_bin(margin):
-    return np.searchsorted(S_EDGES, np.asarray(margin), side="left").clip(0, 6)
+    return np.searchsorted(S_EDGES, np.asarray(margin), side="left").clip(0, len(S_EDGES))
 
 
 def s3_bin(margin):
@@ -65,16 +65,20 @@ def s3_bin(margin):
 
 
 def c_bin(clock):
-    """Clock phase from game seconds remaining (3600 at kickoff, 1800 at halftime): 0 first half, 1 its last 2:00,
-    2 third quarter, 3 15:00-5:00 left, 4 5:00-2:00, 5 2:00-0:31; then 0:30-0:13 of a half (6 first, 7 second) and its
-    last 12 seconds (8, 9), when a team in range kicks on any down: in one 2:00 phase the simulator threw on most last
-    snaps of the first half in field goal range (real teams kicked on 80-96%)."""
+    """Clock phase from game seconds remaining (3600 at kickoff, 1800 at halftime): 0 first half, 1 its 2:00-1:01,
+    2 third quarter, 3 15:00-5:00 left, 4 5:00-2:00, 5 2:00-1:01; 1:00-0:31 of a half (10 first, 11 second); then
+    0:30-0:13 (6, 7) and its last 12 seconds (8, 9), when a team in range kicks on any down: in one 2:00 phase the
+    simulator threw on most last snaps of the first half in field goal range (real teams kicked on 80-96%). Under a
+    minute, a team needing points calls timeouts several times as often as with 1:30 left (trailing by 1-8 with one
+    left, after a play in bounds: 49% at 0:31-1:00, 7% at 1:31-2:00, 2020-24); pooled, the simulator let the clock run
+    with timeouts in hand and its late drives ran out of time 3 times as often as real ones."""
     g = np.asarray(clock)
     first = g > 1800
     h = np.where(first, g - 1800, g)
     late = np.where(h > 30, -1, np.where(h > 12, 6, 8)) + np.where(first, 0, 1)
+    two = np.where(h > 60, np.where(first, 1, 5), np.where(first, 10, 11))
     return np.where(h > 120, np.where(first, 0, np.where(g > 900, 2, np.where(g > 300, 3, 4))),
-                    np.where(h > 30, np.where(first, 1, 5), late))
+                    np.where(h > 30, two, late))
 
 
 def fg_bin(yl):
@@ -82,10 +86,12 @@ def fg_bin(yl):
 
 
 # coarser keys derived from finer ones, for tables too sparse for the fine ones: key -> (source key, mapping)
-DERIVED = {"c4": ("c", np.array([0, 1, 2, 3, 4, 5, 1, 5, 1, 5])),   # clock: the last 2:00 of a half is one phase
-           "s4": ("s", np.array([0, 0, 1, 2, 3, 3, 3])),            # margin: down 9+, down 1-8, tied, ahead
-           "dd": ("d", np.array([0, 1, 2, 2]))}                     # down: 1st, 2nd, 3rd or 4th
-DIMS.update({"c4": 6, "s4": 4, "dd": 3})
+DERIVED = {"c4": ("c", np.array([0, 1, 2, 3, 4, 5, 1, 5, 1, 5, 1, 5])),   # clock: the last 2:00 of a half is one phase
+           "s4": ("s", np.array([0, 0, 1, 2, 3, 4, 4, 4, 4])),      # margin: down 9+, down 4-8, down 1-3, tied, ahead
+           "dd": ("d", np.array([0, 1, 2, 2])),                     # down: 1st, 2nd, 3rd or 4th
+           "tl1": ("tlo", np.array([0, 1, 1, 1]))}                  # offense has a timeout left
+DIMS.update({"c4": 6, "s4": 5, "dd": 3, "tl1": 2})
+SCRIPT_CELLS = DIMS["c4"] * DIMS["s4"]
 
 
 def _bin(bins: dict, k: str) -> np.ndarray:
@@ -312,7 +318,9 @@ def _fourth_features(df: pd.DataFrame) -> np.ndarray:
     t, zc, c, sm = (df[k].to_numpy(int) for k in ("t", "zc", "c", "s"))
     c4, s4 = _col(df, "c4"), _col(df, "s4")
     rng_ = np.digitize(df["zc"].to_numpy(int), [8, 13])          # opp 37 or closer / 38-50 / farther
-    parts = [(t, 5), (zc, 16), (c, 10), (sm, 7), (c4 * 4 + s4, 24), ((rng_ * 6 + c4) * 4 + s4, 72), (t * 4 + s4, 20)]
+    S4 = DIMS["s4"]
+    parts = [(t, 5), (zc, 16), (c, DIMS["c"]), (sm, DIMS["s"]), (c4 * S4 + s4, 6 * S4), ((rng_ * 6 + c4) * S4 + s4, 18 * S4),
+             (t * S4 + s4, 5 * S4)]
     return np.hstack([np.eye(k)[v] for v, k in parts])
 
 
@@ -332,8 +340,8 @@ SCRIPT_K = 300.0   # plays of shrinkage toward no game-script effect
 
 
 def script_cell(c, s) -> np.ndarray:
-    """Coarse clock x score cell (24) of the game-script gain adjustments."""
-    return DERIVED["c4"][1][np.asarray(c, int)] * 4 + DERIVED["s4"][1][np.asarray(s, int)]
+    """Coarse clock x score cell (SCRIPT_CELLS) of the game-script gain adjustments."""
+    return DERIVED["c4"][1][np.asarray(c, int)] * DIMS["s4"] + DERIVED["s4"][1][np.asarray(s, int)]
 
 
 def script_gains(comp: pd.DataFrame, rs: pd.DataFrame, comp_gain: Empirical, run_gain: Empirical,
@@ -349,12 +357,11 @@ def script_gains(comp: pd.DataFrame, rs: pd.DataFrame, comp_gain: Empirical, run
     act = np.minimum(comp.gain.to_numpy(float), yl)
     sc = script_cell(comp.c, comp.s)
     m = exp.mean()
-    num, den = np.bincount(sc, act, 24), np.bincount(sc, exp, 24)
-    n = np.bincount(sc, minlength=24)
+    num, den = np.bincount(sc, act, SCRIPT_CELLS), np.bincount(sc, exp, SCRIPT_CELLS)
     comp_scale = (num + SCRIPT_K * m) / (den + SCRIPT_K * m)
     rm = run_gain.means()[run_gain.cell(t=rs.t, z=rs.z, zg=rs.zg)]
     rc = script_cell(rs.c, rs.s)
-    run_shift = np.bincount(rc, rs.gain.to_numpy(float) - rm, 24) / (np.bincount(rc, minlength=24) + SCRIPT_K)
+    run_shift = np.bincount(rc, rs.gain.to_numpy(float) - rm, SCRIPT_CELLS) / (np.bincount(rc, minlength=SCRIPT_CELLS) + SCRIPT_K)
     return comp_scale, run_shift
 
 
@@ -456,9 +463,12 @@ def fit(p: pd.DataFrame, starters: dict) -> Tables:
     full = ["d", "t", "z", "zc", "c", "s"]
     # three parts, each adding its own effect: field position and distance; the clock given down and zone (kicks on
     # any down in range in a half's last seconds); the score given down and clock (in one nested chain the score
-    # effect was shrunk away: late leads passed far more than real teams do)
+    # effect was shrunk away: late leads passed far more than real teams do); a sparse score cell shrinks toward its
+    # coarse score (s4) first, not toward every score (late in a half, mostly leaders kneeling: simulated teams down
+    # 1-3 knelt to end 5% of their drives from 0:45)
     call = Categorical.fit_product(s, "call", CALLS, [[["d"], ["d", "z"], ["d", "t", "z"], ["d", "t", "z", "zc"]],
-                                                      [["d", "z"], ["d", "z", "c"]], [["d", "c"], ["d", "c", "s"]]],
+                                                      [["d", "z"], ["d", "z", "c"]],
+                                                      [["d", "c"], ["d", "c", "s4"], ["d", "c", "s"]]],
                                    full)
     # 4th downs on their own: kick or go depends on field position, score and clock together (down 1-3 late, kick
     # the tying field goal; trailing farther out, go for it), which a product of smoothed tables caps
@@ -489,8 +499,13 @@ def fit(p: pd.DataFrame, starters: dict) -> Tables:
     punt_yl = Empirical.fit(pu, "next_yl", [[], ["z"]])
     # snaps whose next snap came at a two-minute warning: the engine stops the clock there itself
     warned = s.has_next & s.next_clock.isin([1920.0, 120.0]) & (s.game_seconds_remaining > s.next_clock)
-    elapsed = Empirical.fit(s[~warned], "elapsed", [[], ["cat"], ["cat", "tox"], ["cat", "tox", "c"],
-                                                    ["cat", "tox", "c", "s3"]], min_n=30)
+    # a sparse cell keeps the score before the fine clock: late in a half trailing teams hurry and leaders don't
+    # (pooled over the score, a sack under a minute to go took the whole game's average, 37 s; trailing teams: 9 s);
+    # and a team that keeps its timeouts hurries instead (after a completion in a half's last 30 s and no timeout,
+    # 6.8 s to the next snap with one left, 10.3 s without, 2016-24)
+    elapsed = Empirical.fit(s[~warned], "elapsed", [[], ["cat"], ["cat", "tox"], ["cat", "tox", "c4"],
+                                                    ["cat", "tox", "c4", "s3"], ["cat", "tox", "c", "s3"],
+                                                    ["cat", "tox", "c", "s3", "tl1"]], min_n=30)
     # who calls a timeout after a play, by clock phase, score, the play and the timeouts each side has left
     tm = s[s.has_next].assign(tx=lambda x: x.tox.astype(str))
     timeout = Categorical.fit_product(tm, "tx", ["0", "1", "2"],

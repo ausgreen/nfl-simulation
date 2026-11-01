@@ -62,7 +62,7 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
     quarters=True, also the points each team scored in each regulation quarter (rows, n, 4, 2), credited to the
     quarter in which the scoring snap started (overtime points count in pts, in no quarter).
 
-    audit (a dict, filled in place): clock checks — "used" and "n", (11, 10) arrays of game seconds used and
+    audit (a dict, filled in place): clock checks — "used" and "n", (11, 12) arrays of game seconds used and
     snaps by play category (tables.CATS) x clock phase (tables.c_bin), "gain" (11) yards gained by category, and
     "snaps", "changes": per game (rows, n)
     counts of snaps (plays from scrimmage) and changes of possession.
@@ -387,7 +387,7 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
             caller = np.where(tox == 1, p, 1 - p)
             used = tox > 0
             tl[a[used], caller[used]] -= 1
-        dt = tb.elapsed.sample(rng, tb.elapsed.cell(cat=cat, tox=tox, c=c, s3=s3))
+        dt = tb.elapsed.sample(rng, tb.elapsed.cell(cat=cat, tox=tox, c=c, s3=s3, tlo=tlo))
         normal = ((c == 0) | (c == 2)) & (dt > 0)
         dt = np.where(normal, np.maximum(dt + tp["pace"][ra, p], 1), dt)
         # a leader's kneel with time left takes the whole play clock (the table's kneels average ~33 s: it learns
@@ -409,7 +409,7 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
         nc[half] = 1800
         if audit is not None:
             if not audit:
-                audit.update(used=np.zeros((len(T.CATS), 10)), n=np.zeros((len(T.CATS), 10)),
+                audit.update(used=np.zeros((len(T.CATS), T.DIMS["c"])), n=np.zeros((len(T.CATS), T.DIMS["c"])),
                              gain=np.zeros(len(T.CATS)), snaps=np.zeros(r * n), changes=np.zeros(r * n))
             np.add.at(audit["gain"], cat, gain)
             if "fourth" not in audit:
