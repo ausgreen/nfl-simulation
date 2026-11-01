@@ -69,7 +69,7 @@ def cmd_sim(ds, a):
 def cmd_live(ds, a):
     from .live.app import serve
 
-    serve(a.port, ds)
+    serve(a.port, ds, feed=a.feed)
 
 
 def cmd_worker(ds, a):
@@ -109,7 +109,7 @@ def cmd_worker(ds, a):
         prices, _ = kalshi_ws.price_source(log=ds.data_dir / "live" / "kalshi_ws", on_move=lambda ticker: wake.set())
     procs = a.procs if a.procs is not None else min(8, os.cpu_count() or 1)
     print(f"simulating in {procs} process{'es' if procs > 1 else ''}")
-    w = Worker(ds, pub, every=a.every, only=set(a.game) if a.game else None, prices=prices, procs=procs, wake=wake,
+    w = Worker(ds, pub, every=a.every, only=set(a.game) if a.game else None, prices=prices, procs=procs, wake=wake, feed=a.feed,
                history=None if a.replay else ds.data_dir / "live" / "history",
                refresh=None if a.replay else lambda: _refresh_data(ds), preds_every=None if a.replay else 3 * 3600.0)
     if a.once:
@@ -161,6 +161,8 @@ def main(argv=None) -> None:
     s = sub.add_parser("live", help="live game companion: current state and the next likely states (web page)")
     s.add_argument("action", choices=["serve"])
     s.add_argument("--port", type=int, default=8765)
+    s.add_argument("--feed", choices=["kalshi", "espn"], default="kalshi",
+                   help="live games' state from Kalshi's live data (default; ESPN as fallback) or ESPN only")
     s.set_defaults(fn=cmd_live)
 
     s = sub.add_parser("worker", help="hosted worker: poll ESPN, simulate changed games, publish static JSON + page")
@@ -174,6 +176,8 @@ def main(argv=None) -> None:
     s.add_argument("--game", action="append", help="only this ESPN event id (repeatable)")
     s.add_argument("--once", action="store_true", help="one tick, then stop")
     s.add_argument("--procs", type=int, help="simulation processes (default: one per CPU, up to 8)")
+    s.add_argument("--feed", choices=["kalshi", "espn"], default="kalshi",
+                   help="live games' state from Kalshi's live data (default; ESPN as fallback) or ESPN only")
     s.add_argument("--serve", type=int, metavar="PORT",
                    help="push every update to open pages on this port (/events); with --publish local, also serve "
                         "the pages there")

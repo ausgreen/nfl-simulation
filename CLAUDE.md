@@ -23,6 +23,7 @@ uv run nflsim feed race <file.jsonl.gz> [--hours H]   # every fast source side b
 uv run nflsim worker [--out site] [--replay <rec> --speed 10] [--once]   # hosted worker (see below)
 uv run nflsim worker --publish r2 [--once]   # publish to R2 (needs `uv sync --extra hosted` and R2_* env vars)
 uv run nflsim worker --out site --serve 8787 [--procs N]   # fastest local set-up: pages + pushed updates on :8787
+uv run nflsim worker --feed espn                       # live games from ESPN only (default: Kalshi's live data, ESPN as fallback; also `live serve --feed`)
 deploy/push.sh <server-ip>               # deploy the worker to the Hetzner server (docs/deploy.md) — ask first
 uv run pytest                            # ~11 s; `-m "not slow"` skips the tests that run the simulator
 ```
@@ -60,6 +61,12 @@ calibration) -> vectorized simulation from any game state -> CLI replay or live 
   next-snap states, the current drive's most likely outcomes (`simulate(..., drive=True)`), QB yardage chances and what moves them
   (`theta`: dropbacks left and each line's chance after the next snap's result, from `simulate(..., trace=...)`), deterministically; `compute(event, overrides)` fetches then calls it;
   query-string overrides correct the feed's state; the page no longer has a form for them), `live_template.html` (the page).
+- `live/kalshi_feed.py` — the same state dict as `espn.situation` + `add_summary`, from Kalshi's live data (Stats
+  Perform; `game_stats` cached 1 s): score, clock, points per quarter, QB yards from the play text (matched ESPN's
+  final box score for all 38 passers of 2026-10-18/30), latest passer, kickoff pending and receiver; down and spot
+  from Kalshi's live summary when it describes the latest play, else ESPN's. ESPN's feed shows plays ~28 s after
+  they happen, Kalshi's prices move ~7 s after (2026-10 history log vs ESPN's per-play wallclock); Kalshi's own feed
+  speed is unmeasured (`nflsim feed race`). Requests go through `espn.source`, so recordings capture them.
 - `hosted/` — the web version (docs/hosting-plan.md). `worker.py`: `Worker.tick()` reads the scoreboard once
   (every 2 s while a game is in progress, `live_every`; sooner when `wake` is set, which a jump in a game's Kalshi
   market does), fetches the changed games' summaries in parallel, and re-simulates a game when `espn.signature`

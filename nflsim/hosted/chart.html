@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chances over time</title>
+<style>
+:root {
+  --bg: #f4f5f2; --surface: #ffffff; --ink: #18211c; --ink-2: #4a554e; --ink-3: #7b857f;
+  --rule: #d9ddd8; --rule-2: #eceee9; --accent: #1d6b48; --accent-wash: #e3f0e8; --warn: #9a5b00; --warn-wash: #fff3dc;
+  --bar: #1d6b48; --bar-2: #c9d9cf; --link: #1a5c9e;
+  --font: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1512; --surface: #161e1a; --ink: #e6ece8; --ink-2: #b2bcb6; --ink-3: #7f8a84;
+    --rule: #2a3530; --rule-2: #212b26; --accent: #4fb582; --accent-wash: #1c3327; --warn: #f5c34f; --warn-wash: #3a2f12;
+    --bar: #4fb582; --bar-2: #2c3d34; --link: #7cc4ff;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1512; --surface: #161e1a; --ink: #e6ece8; --ink-2: #b2bcb6; --ink-3: #7f8a84;
+  --rule: #2a3530; --rule-2: #212b26; --accent: #4fb582; --accent-wash: #1c3327; --warn: #f5c34f; --warn-wash: #3a2f12;
+  --bar: #4fb582; --bar-2: #2c3d34; --link: #7cc4ff;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font); }
+a { color: var(--link); text-underline-offset: 2px; }
+a:hover { text-decoration-thickness: 2px; }
+.app { max-width: 1200px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; }
+header.site { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 20px; border-bottom: 1px solid var(--rule); }
+.brand { font-size: 18px; font-weight: 700; letter-spacing: .02em; padding-bottom: 8px; }
+.tabs { display: flex; gap: 2px; overflow-x: auto; }
+.tabs a { padding: 8px 12px; color: var(--ink-2); text-decoration: none; font-weight: 600; white-space: nowrap;
+  border-bottom: 3px solid transparent; margin-bottom: -1px; }
+.tabs a:hover { color: var(--ink); }
+.tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); }
+@keyframes flash { from { background-color: var(--warn-wash); } }
+.flash { animation: flash 1.6s ease-out; }
+.beat { width: 9px; height: 9px; border-radius: 50%; background: var(--rule); align-self: center; margin-left: auto; }
+.beat.flash { animation: beat 1.6s ease-out; }
+@keyframes beat { from { background: var(--accent); box-shadow: 0 0 0 5px var(--accent-wash); } }
+header.top { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; justify-content: space-between; }
+h1 { margin: 0; font-size: 17px; letter-spacing: .02em; }
+.controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; color: var(--ink-2); }
+select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 4px 6px; }
+.panel { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 6px 14px 10px; overflow-x: auto; }
+.muted { color: var(--ink-3); }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--rule-2); vertical-align: middle; white-space: nowrap; }
+th { font-size: 12px; color: var(--ink-3); font-weight: 600; }
+td.r, th.r { text-align: right; }
+.live { color: var(--accent); font-weight: 700; font-size: 11.5px; letter-spacing: .05em; }
+.side { display: inline-block; padding: 0 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.side.yes { background: var(--accent-wash); color: var(--accent); }
+.side.no { background: var(--warn-wash); color: var(--warn); }
+.gap { position: relative; height: 8px; min-width: 90px; background: var(--bar-2); border-radius: 4px; }
+.gap i { position: absolute; top: 0; bottom: 0; background: var(--bar); border-radius: 4px; }
+.bar .rng, .gap .rng { position: absolute; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%;
+  background: var(--ink); }
+.rng-key { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ink); margin: 0 2px 1px 0; }
+.gap b { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--warn); }
+.err { color: var(--warn); }
+button.watch { font: inherit; font-size: 12px; color: var(--ink-2); background: none; border: 1px solid var(--rule); border-radius: 999px;
+  padding: 1px 8px; cursor: pointer; }
+button.watch[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); font-weight: 600; }
+footer { color: var(--ink-3); font-size: 12.5px; display: grid; gap: 6px; }
+footer p { margin: 0; }
+
+
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: 340px; }
+.chart .grid { stroke: var(--rule-2); stroke-width: 1; }
+.chart .axis { fill: var(--ink-3); font: 11px var(--mono); }
+.chart .mark { stroke: var(--rule); stroke-width: 1; stroke-dasharray: 3 3; }
+.chart .mark-label { fill: var(--ink-3); font: 600 11px var(--font); }
+.chart .score { fill: var(--warn); }
+.chart .model { fill: none; stroke: var(--accent); stroke-width: 2.25; }
+.chart .kalshi { fill: none; stroke: var(--link); stroke-width: 1.75; stroke-dasharray: 5 3; }
+.chart .cursor { stroke: var(--ink-3); stroke-width: 1; }
+.tip { position: absolute; top: 6px; pointer-events: none; background: var(--surface); border: 1px solid var(--rule);
+  border-radius: 6px; padding: 4px 8px; font-size: 12.5px; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+.key { display: inline-flex; align-items: center; gap: 6px; margin-right: 14px; }
+.key i { display: inline-block; width: 18px; height: 0; border-top: 2.25px solid var(--accent); }
+.key i.k { border-top: 2px dashed var(--link); }
+.now { display: flex; flex-wrap: wrap; gap: 10px 28px; padding: 6px 0 2px; }
+.now div { display: grid; }
+.now .lbl { font-size: 12px; color: var(--ink-3); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.now .v { font: 600 20px var(--mono); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="site">
+    <span class="brand">Live Game Companion</span>
+    <nav class="tabs" aria-label="Pages"><a href="./">All games</a><a href="game.html">Game</a><a href="chart.html" aria-current="page">Chart</a><a href="edges.html">Model vs Kalshi</a><a href="watch.html">Watch list</a></nav>
+    <span class="beat" id="beat" title="Pulses when new numbers arrive"></span>
+  </header>
+  <header class="top">
+    <h1 id="title">Chances over time</h1>
+    <div class="controls">
+      <label>Game <select id="game"></select></label>
+      <label>Market <select id="market"></select></label>
+    </div>
+  </header>
+  <section class="panel">
+    <div class="now" id="now"></div>
+    <div class="muted" style="font-size:12.5px;margin:4px 0 6px"><span class="key"><i></i>Model</span><span class="key"><i class="k"></i>Kalshi (mid of bid and ask)</span><span id="updated"></span></div>
+    <div class="chart" id="chart"><p class="muted">Loading…</p></div>
+  </section>
+  <footer>
+    <p>The model's chance and Kalshi's price for the market, from the first update of the game on. A line gains a point
+      when it moves by at least 1 point (1¢); dashed vertical lines mark quarters, orange dots scores. Times are your
+      local time. For information only.</p>
+  </footer>
+</div>
+
+<script>
+(() => {
+  const EVERY_S = 10, EVENTS = "events";
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const pct = (x) => x == null ? "—" : (x * 100).toFixed(0) + "%";
+  const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+                  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} } };
+  const getJSON = async (path) => { const r = await fetch(path, { cache: "no-cache" }); if (!r.ok) throw new Error(r.status === 404 ? "no chart for this game yet" : r.statusText); return r.json(); };
+  const hhmm = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  let games = [], data = null, hover = null, view = null, stream = null, streamAt = 0, busy = false;
+
+  // the value of a step series at time t (its last point at or before t)
+  const at = (pts, t) => { let v = null; for (const [ti, x] of pts || []) { if (ti > t) break; v = x; } return v; };
+
+  function marketLabel(key) {
+    if (key === "win") return `${data.home} wins`;
+    const [, team, line] = key.split(":");
+    return `${data.names["qb:" + team] || team} ${line}+ yds`;
+  }
+
+  function fillMarkets() {
+    const keys = new Set(["win", ...Object.keys(data.kalshi || {})]);
+    for (const k of Object.keys(data.model || {})) {  // the model's lines 150-350, plus every line Kalshi lists
+      const line = +k.split(":")[2];
+      if (k.startsWith("qb:") && line >= 150 && line <= 350) keys.add(k);
+    }
+    const sorted = [...keys].filter((k) => k === "win" || data.model[k] || data.kalshi[k]).sort((a, b) => {
+      if (a === "win") return -1; if (b === "win") return 1;
+      const [, ta, la] = a.split(":"), [, tb, lb] = b.split(":");
+      return ta === tb ? la - lb : ta < tb ? -1 : 1;
+    });
+    const want = $("market").value || store.get("chart:market") || "win";
+    $("market").innerHTML = sorted.map((k) => `<option value="${esc(k)}">${esc(marketLabel(k))}${data.kalshi[k] ? "" : " (model only)"}</option>`).join("");
+    $("market").value = sorted.includes(want) ? want : "win";
+  }
+
+  function draw() {
+    if (!data) return;
+    const key = $("market").value, model = data.model[key] || [], kalshi = data.kalshi[key] || [];
+    const g = games.find((x) => x.event === data.event);
+    $("title").textContent = `${data.away} @ ${data.home} · ${marketLabel(key)}`;
+    const all = [...model, ...kalshi];
+    if (!all.length) { view = null; $("chart").innerHTML = `<p class="muted">No numbers for this market yet.</p>`; $("now").innerHTML = ""; return; }
+    const t0 = Math.min(...all.map((p) => p[0])), live = g && g.state === "in";
+    const t1 = Math.max(...all.map((p) => p[0]), ...(data.marks || []).map((m) => m[0]), live ? Date.now() / 1000 : 0);
+    const W = $("chart").clientWidth || 800, H = 340, L = 40, R = 12, T = 22, B = 26;
+    const x = (t) => L + (t1 > t0 ? (t - t0) / (t1 - t0) : 0) * (W - L - R), y = (v) => T + (1 - v) * (H - T - B);
+    const path = (pts) => {
+      if (!pts.length) return "";
+      let d = `M${x(pts[0][0]).toFixed(1)},${y(pts[0][1]).toFixed(1)}`;
+      for (let i = 1; i < pts.length; i++) d += `H${x(pts[i][0]).toFixed(1)}V${y(pts[i][1]).toFixed(1)}`;
+      return d + `H${x(t1).toFixed(1)}`;
+    };
+    let svg = "";
+    for (const v of [0, .25, .5, .75, 1]) svg += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text class="axis" x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${v * 100}%</text>`;
+    const span = t1 - t0, step = span > 4 * 3600 ? 3600 : span > 7200 ? 1800 : span > 2400 ? 900 : 300;
+    for (let t = Math.ceil(t0 / step) * step; t <= t1; t += step) svg += `<text class="axis" x="${x(t)}" y="${H - 8}" text-anchor="middle">${hhmm(t)}</text>`;
+    for (const [t, label] of data.marks || []) {
+      if (t < t0) continue;
+      if (/–/.test(label)) svg += `<circle class="score" cx="${x(t)}" cy="${T - 8}" r="3.5"><title>${esc(label)} · ${hhmm(t)}</title></circle>`;
+      else svg += `<line class="mark" x1="${x(t)}" x2="${x(t)}" y1="${T - 2}" y2="${H - B}"/><text class="mark-label" x="${x(t) + 4}" y="${T + 10}">${esc(label)}</text>`;
+    }
+    svg += `<path class="kalshi" d="${path(kalshi)}"/><path class="model" d="${path(model)}"/>`;
+    svg += `<line class="cursor" id="cursor" x1="0" x2="0" y1="${T}" y2="${H - B}" visibility="hidden"/>`;
+    $("chart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(marketLabel(key))} over time">${svg}</svg><div class="tip" id="tip" hidden></div>`;
+    const svgEl = $("chart").querySelector("svg");
+    view = { x, t0, t1, W, L, R, model, kalshi };
+    svgEl.addEventListener("mousemove", (e) => {
+      const r = svgEl.getBoundingClientRect(), px = (e.clientX - r.left) * W / r.width;
+      hover = Math.min(t1, Math.max(t0, t0 + (px - L) / (W - L - R) * (t1 - t0)));
+      readout();
+    });
+    svgEl.addEventListener("mouseleave", () => { hover = null; readout(); });
+    readout();
+  }
+
+  // the numbers above the chart (at the cursor, or the latest) and the cursor itself
+  function readout() {
+    if (!view) return;
+    const { x, t1, W, model, kalshi } = view, tnow = hover ?? t1, m = at(model, tnow), k = at(kalshi, tnow);
+    const score = [...(data.marks || [])].filter((mk) => /–/.test(mk[1]) && mk[0] <= tnow).pop();
+    $("now").innerHTML = [["Model", pct(m)], ["Kalshi", pct(k)],
+      ["Gap", m == null || k == null ? "—" : `${m - k >= 0 ? "+" : "−"}${Math.abs(Math.round((m - k) * 100))}`],
+      [hover != null ? "At" : "Updated", hhmm(tnow)], ["Score", score ? esc(score[1]) : "—"]]
+      .map(([l, v]) => `<div><span class="lbl">${l}</span><span class="v">${v}</span></div>`).join("");
+    const cur = $("cursor"), tip = $("tip");
+    if (!cur || !tip) return;
+    cur.setAttribute("visibility", hover == null ? "hidden" : "visible");
+    tip.hidden = hover == null;
+    if (hover == null) return;
+    cur.setAttribute("x1", x(hover)); cur.setAttribute("x2", x(hover));
+    tip.innerHTML = `${hhmm(hover)} · model ${pct(m)} · Kalshi ${pct(k)}`;
+    tip.style.left = Math.min(W - 230, Math.max(0, x(hover) + 8)) * ($("chart").clientWidth / W) + "px";
+  }
+
+  function setData(d) {
+    data = d;
+    fillMarkets();
+    draw();
+    const b = $("beat"); b.classList.remove("flash"); void b.offsetWidth; b.classList.add("flash");
+  }
+
+  async function load() {
+    const ev = $("game").value;
+    if (!ev) return;
+    try { setData(await getJSON(`series/${ev}.json`)); $("updated").textContent = ""; }
+    catch (e) { data = null; $("chart").innerHTML = `<p class="muted">${esc(e.message)}: a game's chart starts with its first update while the worker runs.</p>`; $("now").innerHTML = ""; }
+  }
+
+  function follow() {
+    if (stream) stream.close();
+    stream = null;
+    if (!window.EventSource) return;
+    stream = new EventSource(`${EVENTS}?only=${encodeURIComponent("series/" + $("game").value + ".json")}`);
+    stream.addEventListener("file", (e) => { streamAt = Date.now(); const f = JSON.parse(e.data); setData(f.body); });
+    stream.addEventListener("ping", () => { streamAt = Date.now(); });
+  }
+
+  async function start() {
+    try { games = await getJSON("games.json"); } catch { games = []; }
+    const asked = new URLSearchParams(location.search).get("event");
+    const order = { in: 0, pre: 1, post: 2 };
+    games.sort((a, b) => (order[a.state] ?? 3) - (order[b.state] ?? 3));
+    $("game").innerHTML = games.map((g) => `<option value="${esc(g.event)}">${esc(g.away)} @ ${esc(g.home)}${g.state === "in" ? " · live" : g.state === "post" ? " · final" : ""}</option>`).join("");
+    const pick = [asked, store.get("live:game")].find((e) => e && games.some((g) => g.event === e));
+    if (pick) $("game").value = pick;
+    await load();
+    follow();
+  }
+
+  $("game").addEventListener("change", () => {
+    store.set("live:game", $("game").value);
+    history.replaceState(null, "", "?event=" + encodeURIComponent($("game").value));
+    load(); follow();
+  });
+  $("market").addEventListener("change", () => { store.set("chart:market", $("market").value); hover = null; draw(); });
+  window.addEventListener("resize", () => draw());
+  setInterval(() => { if (!busy && Date.now() - streamAt > 40000) { busy = true; load().finally(() => { busy = false; }); } }, EVERY_S * 1000);
+  start();
+})();
+</script>
+</body>
+</html>

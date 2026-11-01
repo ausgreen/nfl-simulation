@@ -41,6 +41,7 @@ TEMPLATE = Path(__file__).with_name("live_template.html")
 HOME = Path(__file__).parent.parent / "hosted" / "index.html"  # every game at a glance
 EDGES = HOME.with_name("edges.html")  # the model vs Kalshi's prices, largest gaps first
 WATCH = HOME.with_name("watch.html")  # the viewer's watched lines and positions (kept in their browser)
+CHART = HOME.with_name("chart.html")  # a game's chances over time (from the states and prices this server sees)
 LINES = list(range(100, 401, 25))  # the page shows 150-350, plus any other line Kalshi lists
 N_NEXT, N_DRIVE, N_GAME = 20000, 10000, 4000
 # each line's range: the chance with the QB's form fixed at the 10th and 90th percentile of its (in-game) posterior
@@ -165,8 +166,9 @@ def clock_text(clock: float, s: dict | None = None) -> str:
 
 
 class LiveModel:
-    def __init__(self, ds: Dataset):
+    def __init__(self, ds: Dataset, feed: str = "espn"):
         self.ds = ds
+        self.feed = feed  # "kalshi": a live game's state from Kalshi's live data (kalshi_feed.live_state)
         self.lock = threading.Lock()
         self.setups: dict[int, PG.Setup] = {}
         self.week_preds: dict[tuple, pd.DataFrame] = {}
@@ -279,7 +281,7 @@ class LiveModel:
     def compute(self, event: str, ov: dict) -> dict:
         """compute_state from the live feed; re-simulates only when the play, the box score or the corrections
         changed."""
-        s = espn.game_state(event)
+        s = self.game_state(event)
         sig, key = (espn.signature(s), espn.box(s)), tuple(sorted(ov.items()))
         with self.lock:
             busy = self._computing.setdefault(event, threading.Lock())
@@ -290,6 +292,13 @@ class LiveModel:
             out = self.compute_state(s, ov)
             self.last[event] = (sig, key, out)
             return out
+
+    def game_state(self, event: str) -> dict:
+        if self.feed == "kalshi":
+            from . import kalshi_feed
+
+            return kalshi_feed.live_state(event)
+        return espn.game_state(event)
 
     def compute_state(self, s: dict, ov: dict | None = None) -> dict:
         """Everything the page shows, from an espn.game_state() dict and optional corrections (`ov`, the
@@ -500,7 +509,8 @@ def _local(page: Path) -> bytes:
     """A hosted page (hosted/*.html) pointed at this server's endpoints and paths instead of the published files."""
     html = page.read_text()
     for published, here in (("summary.json", "/api/summary"), ("kalshi.json", "/api/kalshi"), ("game.html", "/game"),
-                            ("edges.html", "/edges"), ("watch.html", "/watch"), ("./", "/")):
+                            ("edges.html", "/edges"), ("watch.html", "/watch"), ("chart.html", "/chart"),
+                            ("./", "/")):
         html = html.replace(f'"{published}"', f'"{here}"')
     return html.encode()
 
@@ -513,12 +523,20 @@ def _f(v):
         return None
 
 
-def serve(port: int = 8765, ds: Dataset | None = None) -> None:
-    model = LiveModel(ds or load())
+def serve(port: int = 8765, ds: Dataset | None = None, feed: str = "kalshi") -> None:
+    model = LiveModel(ds or load(), feed=feed)
     from .. import kalshi_ws
+
+    from ..hosted.series import Series
 
     source, book = kalshi_ws.price_source()
     prices = {"at": 0.0, "data": {}, "every": 1.0 if book else 5.0}
+    series = Series()  # while a page is open: the states computed for it and the prices fetched
+
+    def card(g, out):
+        c = summary(out, g)
+        series.add_state(time.time(), c)
+        return c
 
     class Handler(BaseHTTPRequestHandler):
         def _send(self, code, body, ctype="application/json"):
@@ -542,18 +560,28 @@ def serve(port: int = 8765, ds: Dataset | None = None) -> None:
                     self._send(200, _local(TEMPLATE), "text/html; charset=utf-8")
                 elif u.path == "/watch":
                     self._send(200, _local(WATCH), "text/html; charset=utf-8")
-                elif u.path == "/api/games":
+                elif u.path == "/chart":
+                    self._send(200, _local(CHART), "text/html; charset=utf-8")
+                elif u.path.startswith("/series/") and u.path.endswith(".json"):
+                    ev = u.path[len("/series/"):-len(".json")]
+                    if ev not in series.games:
+                        return self._send(404, {"error": "no chart for this game yet"})
+                    self._send(200, series.json(ev))
+                elif u.path in ("/api/games", "/games.json"):
                     self._send(200, espn.games())
                 elif u.path == "/api/state":
                     ev = q.pop("event", None)
                     if not ev:
                         return self._send(400, {"error": "event required"})
-                    self._send(200, model.compute(ev, q))
+                    out = model.compute(ev, q)
+                    if not q:  # the feed's state, not a corrected one
+                        card(next((g for g in espn.games() if g["event"] == ev), {"event": ev}), out)
+                    self._send(200, out)
                 elif u.path == "/api/summary":
                     cards = []
                     for g in espn.games():
                         try:
-                            cards.append(summary(model.compute(g["event"], {}), g))
+                            cards.append(card(g, model.compute(g["event"], {})))
                         except Exception:  # the card without the model's numbers
                             traceback.print_exc()
                             cards.append(summary(None, g))
@@ -561,11 +589,12 @@ def serve(port: int = 8765, ds: Dataset | None = None) -> None:
                 elif u.path == "/api/kalshi":
                     if time.monotonic() - prices["at"] > prices["every"]:
                         prices.update(at=time.monotonic(), data=source(espn.games()))
+                        series.add_prices(time.time(), prices["data"])
                     self._send(200, prices["data"])
                 elif u.path == "/api/sig":
                     if not q.get("event"):
                         return self._send(400, {"error": "event required"})
-                    s = espn.game_state(q["event"])  # scoreboard + summary: the box score can lag a play
+                    s = model.game_state(q["event"])  # scoreboard + summary: the box score can lag a play
                     self._send(200, {"sig": sig_id(s), "status": s["status"]})
                 else:
                     self._send(404, {"error": "not found"})

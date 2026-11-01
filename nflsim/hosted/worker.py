@@ -5,9 +5,13 @@
     game.html           one game (`?event=<id>`; no corrections)
     edges.html          the model's chances vs Kalshi's prices (summary.json + kalshi.json)
     watch.html          the viewer's watched lines and positions (kept in their browser; summary.json + kalshi.json)
+    chart.html          one game's chances over time, the model's and Kalshi's (`?event=<id>`; series/<event>.json)
     summary.json        its cards (live.app.summary of each game's last computed state)
     games.json          this week's games (espn.games)
     state/<event>.json  LiveModel.compute_state for the game, from ESPN's feed as is
+    series/<event>.json the game's chances over time (series.Series: from every state and price published, rebuilt
+                        from the history files after a restart; re-published at most every `series_every` seconds
+                        unless the game's state changed)
     status.json         heartbeat: when the worker last checked, per-game errors
     kalshi.json         Kalshi's passing-yard prices for the games (`prices`, e.g. kalshi.live_prices; each tick,
                         or every `prices_every` seconds; not published when `prices` is None, as in replays)
@@ -50,11 +54,13 @@ from ..data import Dataset
 from ..live import espn
 from ..live.app import LiveModel, _f, summary
 from .publish import max_age
+from .series import Series
 
 PAGE = Path(__file__).with_name("index.html")
 GAME_PAGE = Path(__file__).with_name("game.html")
 EDGES_PAGE = Path(__file__).with_name("edges.html")
 WATCH_PAGE = Path(__file__).with_name("watch.html")
+CHART_PAGE = Path(__file__).with_name("chart.html")
 
 
 def _iso(t: float) -> str:
@@ -108,6 +114,11 @@ class Worker:
     wake: threading.Event = field(default_factory=threading.Event)  # set it to tick now (e.g. a market moved)
     _lanes: list = field(default_factory=list)  # one single-process executor per simulation process
     _lane_of: dict = field(default_factory=dict)  # event -> lane: a game is always simulated in the same process
+    series: Series = field(default_factory=Series)
+    feed: str = "espn"  # "kalshi": live games' state from Kalshi's live data (live.kalshi_feed), ESPN as fallback
+    _kalshi_down: set = field(default_factory=set)  # games on ESPN because Kalshi's feed failed (logged once)
+    series_every: float = 10.0
+    _series_at: dict = field(default_factory=dict)  # event -> monotonic time series/<event>.json was last published
 
     def __post_init__(self):
         self.model = self.model or LiveModel(self.ds)
@@ -158,6 +169,16 @@ class Worker:
         self.put("game.html", GAME_PAGE.read_bytes(), "text/html; charset=utf-8")
         self.put("edges.html", EDGES_PAGE.read_bytes(), "text/html; charset=utf-8")
         self.put("watch.html", WATCH_PAGE.read_bytes(), "text/html; charset=utf-8")
+        self.put("chart.html", CHART_PAGE.read_bytes(), "text/html; charset=utf-8")
+        if self.history is not None:  # today's series so far (yesterday's file too: a night game crosses UTC midnight)
+            now = espn.source.now()
+            for day in sorted({datetime.fromtimestamp(now - 86400, timezone.utc), datetime.fromtimestamp(now, timezone.utc)}):
+                path = Path(self.history) / f"{day:%Y-%m-%d}.jsonl.gz"
+                if path.exists():
+                    try:
+                        self.series.from_history(read_history(path))
+                    except Exception as e:  # a damaged file: the series start over
+                        self.log(f"series: {path.name}: {type(e).__name__}: {e}")
         sb = espn.scoreboard()
         for g in self._games(sb):
             try:
@@ -301,6 +322,7 @@ class Worker:
         self._upkeep(games, now)  # before the games: what it changes is recomputed in this tick
         n = 0
         polls = []  # (g, track, situation, signature, due): games whose summary is read this tick
+        fast = []  # (g, track, situation): live games read from Kalshi's feed this tick
         for g in games:
             ev = g["event"]
             t = self.games.setdefault(ev, GameTrack())
@@ -309,6 +331,9 @@ class Worker:
                     continue
                 sit = espn.situation(ev, sb)
                 self.weeks.add((sit["season"], sit["week"]))
+                if self.feed == "kalshi" and g["state"] == "in":
+                    fast.append((g, t, sit))
+                    continue
                 sig = espn.signature(sit)
                 due = self._due(g, t, sig, now)
                 if due or self._poll_box(g, t, now):
@@ -316,6 +341,22 @@ class Worker:
             except Exception as e:
                 self._failed(g, t, e, now)
         jobs = []  # (g, track, state, signature, box)
+        for (g, t, sit), s in zip(fast, self._kalshi_states(fast)):
+            if isinstance(s, Exception):  # Kalshi's feed failed: ESPN's this tick
+                if g["event"] not in self._kalshi_down:
+                    self._kalshi_down.add(g["event"])
+                    self.log(f"{g['away']} @ {g['home']}: Kalshi feed: {type(s).__name__}: {s}; using ESPN")
+                sig = espn.signature(sit)
+                due = self._due(g, t, sig, now)
+                if due or self._poll_box(g, t, now):
+                    polls.append((g, t, sit, sig, due))
+                continue
+            if g["event"] in self._kalshi_down:
+                self._kalshi_down.discard(g["event"])
+                self.log(f"{g['away']} @ {g['home']}: Kalshi feed back")
+            sig, box = espn.signature(s), espn.box(s)
+            if self._due(g, t, sig, now) or box != t.box:
+                jobs.append((g, t, s, sig, box))
         for (g, t, sit, sig, due), sm in zip(polls, self._summaries([p[0]["event"] for p in polls])):
             try:
                 if isinstance(sm, Exception):
@@ -337,7 +378,10 @@ class Worker:
             t.sig, t.box, t.computed, t.error, t.out = sig, box, now, None, out
             wrote = self.put_json(f"state/{g['event']}.json", out)
             if wrote:
-                self.record("state", now, card=summary(out, g))
+                card = summary(out, g)
+                self.record("state", now, card=card)
+                self.series.add_state(now, card)
+                self._series_at.pop(g["event"], None)  # a new state: publish the series now
             self.log(f"{g['away']} @ {g['home']} {out['clock']}: {out['now']} ({secs:.1f} s{'' if wrote else ', unchanged'})")
         self.put_json("summary.json", [summary(self.games[g["event"]].out, g) for g in games])
         if self.prices and (self.priced is None or time.monotonic() - self.priced >= self.prices_every):
@@ -346,8 +390,14 @@ class Worker:
                 quotes = self.prices(games)
                 if self.put_json("kalshi.json", quotes):
                     self._record_prices(now, quotes)
+                    self.series.add_prices(now, quotes)
             except Exception as e:  # the page keeps the last prices
                 self.log(f"prices: {type(e).__name__}: {e}")
+        for ev in sorted(self.series.dirty & {g["event"] for g in games}):
+            if time.monotonic() - self._series_at.get(ev, -1e9) >= self.series_every:
+                self.put_json(f"series/{ev}.json", self.series.json(ev))
+                self.series.dirty.discard(ev)
+                self._series_at[ev] = time.monotonic()
         self.interval = self._interval(games, now)
         skew = time.time() - now  # a replay's virtual clock runs behind the viewer's: the pages correct for it
         self.put_json("status.json", {
@@ -377,6 +427,25 @@ class Worker:
                 return e
         with ThreadPoolExecutor(min(8, len(events))) as pool:
             return list(pool.map(one, events))
+
+    def _kalshi_states(self, fast: list) -> list:
+        """Each live game's state from Kalshi's live data (or the exception), fetched in parallel."""
+        from ..live import kalshi_feed
+
+        def one(item):
+            g, _, sit = item
+            try:
+                m = kalshi_feed.milestone(g["event"], g["away"], g["home"], g["kickoff"])
+                if m is None:
+                    raise LookupError("no Kalshi milestone for this game")
+                return kalshi_feed.game_state(sit, m, *kalshi_feed.fetch(m))
+            except Exception as e:
+                return e
+        if not fast:
+            return []
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(min(8, len(fast))) as pool:
+            return list(pool.map(one, fast))
 
     def _failed(self, g: dict, t: GameTrack, e: Exception, now: float) -> None:
         t.error, t.failed = f"{type(e).__name__}: {e}", now

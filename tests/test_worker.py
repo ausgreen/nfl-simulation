@@ -168,6 +168,8 @@ def test_a_new_play_is_simulated_once_and_again_when_the_box_score_catches_up(tm
     assert state["status"] == "in" and state["now"] == "LA ball · 1st & 10 at LA 37"
     assert next(q for q in state["qbs"] if q["team"] == "LA")["yds"] == 12
     assert json.loads((tmp_path / "site" / "status.json").read_text())["live"] == 1
+    series = json.loads((tmp_path / "site" / "series" / f"{PRE}.json").read_text())  # the chart's chances over time
+    assert series["home"] == "LA" and series["model"]["win"] and series["names"]["qb:LA"] == "Matthew Stafford"
 
 
 def test_overtime_is_simulated(tmp_path, model, replay):
@@ -344,3 +346,36 @@ def test_a_simulation_process_forgets_only_the_changed_games(monkeypatch):
     W._child_forget(2026, 8, ["ATL"])
     assert m.week_preds == {(2026, 7): "keep"}
     assert m.params == {"2026_08_GB_DET": 2, "2026_07_SF_KC": 3}
+
+
+def test_with_the_kalshi_feed_a_live_game_takes_its_state_from_it_and_falls_back_to_espn(tmp_path, model, replay, monkeypatch):
+    from nflsim.live import kalshi_feed
+
+    snap = _snapshot()
+    kick = _in_game(snap[SCOREBOARD]["body"], PRE, period=1, clock=900, down=1, togo=10, spot=25, text="Kickoff, touchback.")
+    t0 = _recording(tmp_path / "r.jsonl.gz", kick)
+    rp = replay(tmp_path / "r.jsonl.gz")
+    rp.seek(t0 + 5)
+    w = _worker(tmp_path, model, [PRE])
+    w.feed = "kalshi"
+    w.start()
+    # Kalshi's feed is ahead of ESPN's scoreboard: Stafford has already completed a pass for 12 yards
+    m = {"id": "m", "home_id": "LA", "away_id": "BUF"}
+    plays = {"pbp": {"periods": [{"period_number": 1, "events": [{"plays": [
+        {"sequence": 1, "clock": "15:00", "play_type": "kickoff", "possession": "BUF", "play_id": "1", "home_points": 0,
+         "away_points": 0, "description": "T.Bass kicks off from BUF 35 to the LA END ZONE. Touchback at LA 35."},
+        {"sequence": 2, "clock": "14:55", "play_type": "pass", "possession": "LA", "play_id": "2", "home_points": 0,
+         "away_points": 0, "description": "Matthew Stafford pass complete to the right to Puka Nacua for 12 yards to the LA 47."}]}]}]}}
+    details = {"last_play": {"play_id": "2"}, "quarter": 1, "clock": "14:30",
+               "situation": {"down": 1, "yfd": 10, "yardline": 47, "side_team_id": "LA", "possession_team_id": "LA"}}
+    monkeypatch.setattr(kalshi_feed, "milestone", lambda *a: m)
+    monkeypatch.setattr(kalshi_feed, "fetch", lambda m: (details, plays))
+    assert w.tick() == 1
+    state = json.loads((tmp_path / "site" / "state" / f"{PRE}.json").read_text())
+    assert next(q for q in state["qbs"] if q["team"] == "LA")["yds"] == 12 and state["now"] == "LA ball · 1st & 10 at LA 47"
+    assert w.tick() == 0  # nothing changed
+    # Kalshi's feed fails: the game goes on from ESPN's scoreboard and summary
+    monkeypatch.setattr(kalshi_feed, "fetch", lambda m: (_ for _ in ()).throw(TimeoutError("no answer")))
+    assert w.tick() == 1
+    state = json.loads((tmp_path / "site" / "state" / f"{PRE}.json").read_text())
+    assert state["now"] == "LA ball · 1st & 10 at LA 25"

@@ -6,6 +6,8 @@ section 6). One gzip JSONL file; every record has "src" and "recv" (wall clock o
     espn_box     ESPN's summary, polled every `box_every` s per live game: each QB's passing yards when they change
     kalshi_live  Kalshi's live data (Stats Perform), `game_stats` polled every `live_every` s per live game: each new
                  play (Stats Perform's id, description, score, yards, Kalshi's "wall_clock") the first time it shows
+    kalshi_live_summary  Kalshi's live summary for the game (quarter, clock, score, down/distance/spot, timeouts,
+                 the play it describes) when it changes, polled with `game_stats`
     polymarket   Polymarket's sports WebSocket: every NFL game update (score, period, clock)
     kalshi_ws    Kalshi's WebSocket: every ticker (bid/ask/last) and trade message for the NFL markets
 
@@ -122,6 +124,7 @@ class Race:
     async def kalshi_live(self) -> None:
         milestones: dict[str, str | None] = {}
         seen: dict[str, set] = {}
+        last_summary: dict[str, dict] = {}
         while self.running():
             for ev, g in list(self.live.items()):
                 try:
@@ -133,6 +136,15 @@ class Race:
                         continue
                     stats = await asyncio.to_thread(_get, f"{LIVE}/live_data/milestone/{mid}/game_stats")
                     recv = time.time()
+                    # the live summary (down, distance, spot, clock): does it keep up with the plays?
+                    det = (await asyncio.to_thread(_get, f"{LIVE}/live_data/football_game/milestone/{mid}"))["live_data"]["details"]
+                    brief = {k: det.get(k) for k in ("quarter", "clock", "home_points", "away_points", "situation",
+                                                     "home_timeouts_remaining", "away_timeouts_remaining", "pending_try",
+                                                     "is_under_review")}
+                    brief["last_play_id"] = (det.get("last_play") or {}).get("play_id")
+                    if brief != last_summary.get(ev):
+                        last_summary[ev] = brief
+                        self.sink.add("kalshi_live_summary", recv=time.time(), event=ev, **brief)
                     for p in _plays(stats):
                         pid = p.get("play_id")
                         if pid in seen.setdefault(ev, set()):
