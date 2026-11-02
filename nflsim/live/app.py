@@ -185,14 +185,27 @@ class LiveModel:
         return self.ds.data_dir / "live" / f"live_v3_{season}_w{week:02d}.parquet"
 
     def compute_preds(self, season: int, week: int) -> pd.DataFrame:
-        """v3's pregame expected yards for the week from the current data, one per team (the roster's starter).
-        Slow (~15 s: weather forecasts, form); doesn't touch the cache, so it can run in another thread."""
+        """v3's pregame expected yards for the week from the current data, one per team: the QB Kalshi lists a
+        passing-yards market for (it lists the expected starter only), else the roster's starter. Kalshi's list is read
+        fresh (kalshi.save_snapshot), so a QB it names gets his own row. In 2026 weeks 7-9 the hand-kept roster named
+        the wrong starter in 8 of 59 team-games where Kalshi had it right. Slow (~15 s: weather forecasts, form);
+        doesn't touch the cache, so it can run in another thread."""
+        from .. import kalshi
         from ..v3.model import predict_week
 
+        try:
+            kalshi.save_snapshot(self.ds)
+        except Exception as e:  # the last snapshot (if any) still counts
+            print(f"Kalshi QB markets: {type(e).__name__}: {e}")
         p = predict_week(self.ds, season, week)
+        snap = kalshi.latest_snapshot(self.ds)
+        listed = set()
+        if snap is not None:
+            snap = snap[(snap.season == season) & (snap.week == week)].dropna(subset=["player_id"])
+            listed = set(zip(snap.player_id, snap.team))
         roster = set(self.ds.roster.player_id)
-        p = p.assign(on_roster=p.player_id.isin(roster)).sort_values("on_roster", ascending=False)
-        return p.drop_duplicates("team")[["game_id", "team", "player_id", "qb", "mu", "qb_starts"]]
+        p = p.assign(rank=[0 if (pid, t) in listed else (1 if pid in roster else 2) for pid, t in zip(p.player_id, p.team)])
+        return p.sort_values("rank", kind="stable").drop_duplicates("team")[["game_id", "team", "player_id", "qb", "mu", "qb_starts"]]
 
     def preds(self, season: int, week: int) -> pd.DataFrame:
         """The week's pregame expected yards (cached on disk; computed the first time; `update_preds` refreshes)."""
@@ -341,8 +354,11 @@ class LiveModel:
                 st["clock"] = (900.0 if post else 600.0) if s["period"] == 4 else float(s.get("ot_clock") or 0.0)
             if st["pos"] is None:  # receiver not known yet: a coin toss in each simulated game
                 st.update(pos=-1, kick=True)
-            lead = 0 if st["margin"] > 0 else (1 if st["margin"] < 0 else None)
-            extra = {"ot": True, "post": post, "ot_poss0": lead == 0, "ot_poss1": lead == 1}
+            done = s.get("ot_poss")
+            if done is None:  # no drive list: the team ahead has had its possession
+                lead = 0 if st["margin"] > 0 else (1 if st["margin"] < 0 else None)
+                done = [lead == 0, lead == 1]
+            extra = {"ot": True, "post": post, "ot_poss0": bool(done[0]), "ot_poss1": bool(done[1])}
         h2 = s["h2_receiver"]
         cols = [f"{c}{k}" for c in list(TM.METRICS) + ["delta", "mult", *CO.COLS] for k in (0, 1)
                 if f"{c}{k}" in an] + ["delta_sd"]

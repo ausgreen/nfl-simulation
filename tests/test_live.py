@@ -211,3 +211,13 @@ def test_the_team_scored_on_receives_even_after_a_timeout_hides_the_score():
                                 "period": {"number": 2}, "clock": {"displayValue": "5:37"}}]}
     assert espn.kickoff_receiver(safety, s) == "PHI"  # the free kick goes to the team that scored
     assert espn.kickoff_receiver(td, {**s, "display_clock": "4:10"}) is None  # plays since: not this score
+
+
+def test_overtime_possessions_from_espns_drives():
+    def drive(id_, team, period=5):
+        return {"id": id_, "team": {"id": team}, "plays": [{"period": {"number": period}}]}
+    ids = {"9": 0, "29": 1}  # GB home, CAR away
+    sm = {"drives": {"previous": [drive("1", "29", period=4), drive("2", "29"), drive("3", "9")], "current": {"id": "3"}}}
+    assert espn.ot_possessions(sm, ids) == [False, True]  # CAR's overtime drive is over, GB's is under way
+    sm["drives"]["current"] = {"id": "4"}
+    assert espn.ot_possessions(sm, ids) == [True, True]  # both done: the next score wins

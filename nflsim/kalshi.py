@@ -85,6 +85,11 @@ def to_frame(ds: Dataset, markets: list[dict], fetched_at: str) -> pd.DataFrame:
     for df in (ds.career_games, ds.roster):
         for qb, pid in zip(df.qb, df.player_id):
             names.setdefault(_norm(qb), pid)
+    players = ds.data_dir / "nflverse" / "players.csv"
+    if players.exists():  # QBs who have never started (a backup Kalshi lists when the starter is out)
+        pl = pd.read_csv(players, usecols=["gsis_id", "display_name", "position"]).dropna()
+        for qb, pid in zip(pl[pl.position == "QB"].display_name, pl[pl.position == "QB"].gsis_id):
+            names.setdefault(_norm(qb), pid)
     gc = ds.game_context
     rows = []
     for m in markets:
@@ -100,7 +105,12 @@ def to_frame(ds: Dataset, markets: list[dict], fetched_at: str) -> pd.DataFrame:
                "status": m.get("status")}
         day = _event_date(m["event_ticker"])
         if pid and day:
-            team = ds.team_of(pid)
+            team = _market_team(m["ticker"], m["event_ticker"], gc[gc.game_date == day])
+            if team is None:
+                try:
+                    team = ds.team_of(pid)
+                except IndexError:  # no team on record
+                    team = None
             g = gc[(gc.game_date == day) & ((gc.home == team) | (gc.away == team))]
             if len(g):
                 g = g.iloc[0]
@@ -109,6 +119,21 @@ def to_frame(ds: Dataset, markets: list[dict], fetched_at: str) -> pd.DataFrame:
                            home_away="H" if g.home == team else "A")
         rows.append(row)
     return pd.DataFrame(rows, columns=COLUMNS)
+
+
+def _market_team(ticker: str, event_ticker: str, games: pd.DataFrame) -> str | None:
+    """The QB's team from his market's ticker (KXNFLPASSYDS-26OCT26DALPHI-DALDPRESCOTT4-175: DAL), so a QB traded
+    since his last game is placed with his new team. `games`: that day's games (game_context rows)."""
+    parts = ticker.split("-")
+    if len(parts) < 4:
+        return None
+    for g in games.itertuples():
+        codes = _teams(event_ticker, g.away, g.home)
+        if codes:
+            for code, team in sorted(zip(codes, (g.away, g.home)), key=lambda c: -len(c[0])):
+                if parts[2].startswith(code):
+                    return team
+    return None
 
 
 def snapshot_dir(ds: Dataset) -> Path:

@@ -7,6 +7,6 @@ cd "$(dirname "$0")/.."
 rsync -az --delete --exclude-from=deploy/rsync-exclude ./ "$host:/opt/nflsim/"
 # caches only where the server has none (built here, they save the server a ~1 min rebuild; if they don't match the
 # server's files they're rebuilt there anyway)
-rsync -az --ignore-existing data/live/ "$host:/opt/nflsim/data/live/"
+rsync -az --ignore-existing --include="*.pkl" --include="*.parquet" --exclude="*" data/live/ "$host:/opt/nflsim/data/live/"
 ssh "$host" 'test -f /opt/nflsim/.env' || { scp -q .env "$host:/opt/nflsim/.env"; ssh "$host" chmod 600 /opt/nflsim/.env; }
 ssh "$host" 'cd /opt/nflsim && docker compose up -d --build && docker image prune -f >/dev/null && docker compose ps'

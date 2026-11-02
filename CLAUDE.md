@@ -94,7 +94,7 @@ calibration) -> vectorized simulation from any game state -> CLI replay or live 
   only the games that changed, `prices_at` fills them in; not in replays) for grading the model vs Kalshi.
 
 Modeled since 2026-10-16: accepted penalties that wipe out the play, timeouts, two-minute warnings, overtime (NFL rules
-since 2025; the live app infers whose OT possession it is from the score), strip-sack and return fumbles, return TDs,
+since 2025: each team's possession, then the next score wins; the live app reads which teams have had theirs from the drives), strip-sack and return fumbles, return TDs,
 two-point tries and onside kicks (decisions learned by score and clock), score effects on pass results and gains.
 4th-down calls are a logistic regression (`tables.fourth_down_calls`); other calls a product of smoothed tables.
 Head coaches' end-of-game habits (`sim/coaches.py`, fit on the 10 seasons before the simulated one, shrunk to the

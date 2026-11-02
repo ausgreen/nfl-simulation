@@ -173,10 +173,26 @@ def add_summary(s: dict, sm: dict | None = None) -> dict:
     drives = (sm.get("drives") or {}).get("previous") or []
     first = (drives[0].get("team") or {}).get("id") if drives else None
     s["h2_receiver"] = 1 - ids[first] if first in ids else 1
+    s["ot_poss"] = ot_possessions(sm, ids)
     if s.pop("halftime", False):
         s["pos"] = s["h2_receiver"]
     s["fetched_at"] = datetime.fromtimestamp(source.now(), timezone.utc).isoformat(timespec="seconds")
     return s
+
+
+def ot_possessions(sm: dict, ids: dict) -> list[bool]:
+    """[home, away]: whether each team has had its overtime possession (a finished drive in overtime). After both have,
+    the next score wins; the score alone can't tell (3-3 after two field goals is not a fresh overtime)."""
+    drives = sm.get("drives") or {}
+    current = (drives.get("current") or {}).get("id")
+    done = [False, False]
+    for d in drives.get("previous") or []:
+        if d.get("id") == current or not any(((p.get("period") or {}).get("number") or 0) >= 5 for p in d.get("plays") or []):
+            continue
+        k = ids.get((d.get("team") or {}).get("id"))
+        if k is not None:
+            done[k] = True
+    return done
 
 
 def kickoff_receiver(sm: dict, s: dict) -> str | None:

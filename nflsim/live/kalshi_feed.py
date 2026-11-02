@@ -127,6 +127,34 @@ def passing(ps: list[dict], side: dict) -> tuple[dict, dict]:
     return {s: sorted(rows, key=lambda r: -r[2]) for s, rows in out.items()}, latest
 
 
+OWN_BALL = {"pass", "rush", "sack", "fumble", "punt", "field_goal", "blocked_field_goal", "lateral", "extra_point",
+            "two_point_conversion", "missed_two_point_conversion"}  # plays whose `possession` is the team with the ball
+ENDS_DRIVE = {"punt", "field_goal", "blocked_field_goal", "extra_point", "two_point_conversion",
+              "missed_two_point_conversion"}
+
+
+def ot_possessions(ps: list[dict], side: dict) -> list[bool]:
+    """[home, away]: whether each team has had its overtime possession, from the plays of periods 5 and later: every
+    run of plays by one team that another team's run (or a kick, a try or a score) followed."""
+    done = [False, False]
+    runs = []  # (side, its last play)
+    for p in ps:
+        if p["period"] < 5 or p["play_type"] not in OWN_BALL or " kicks " in _text(p):
+            continue  # (a fumbled kickoff is a "fumble" credited to the kicking team)
+        s = side.get(p.get("possession"))
+        if s is None:
+            continue
+        if runs and runs[-1][0] == s:
+            runs[-1] = (s, p)
+        else:
+            runs.append((s, p))
+    for i, (s, last) in enumerate(runs):
+        scored = "TOUCHDOWN" in _text(last).upper()
+        if i < len(runs) - 1 or last["play_type"] in ENDS_DRIVE or scored:
+            done[s] = True
+    return done
+
+
 def _game_clock(period: int, quarter_clock: float) -> float:
     return max(0, 4 - period) * 900 + quarter_clock if period <= 4 else 0.0
 
@@ -164,6 +192,7 @@ def game_state(s: dict, m: dict, details: dict, game_stats: dict) -> dict:
     kicks = [p for p in ps if p["play_type"] in ("kickoff", "onside_kickoff")]
     s["h2_receiver"] = side.get(kicks[0]["possession"], 1) if kicks else s.get("h2_receiver", 1)
     s["source"] = "kalshi"
+    s["ot_poss"] = ot_possessions(ps, side)
     if not ps:
         return s
     last = ps[-1]

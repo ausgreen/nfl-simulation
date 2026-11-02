@@ -33,8 +33,10 @@ no longer listed. `read_history` reads them back; `prices_at` replays the "kalsh
 Data upkeep (both off unless set, as in replays and tests): with `refresh`, the stats, schedules and play-by-play are
 re-downloaded every `refresh_every` seconds while no game is on or about to start, and everything is recomputed from
 them. With `preds_every`, the pregame expected yards of the week's QBs are recomputed (in a background thread, ~15 s)
-that often while a game is still to start; each game keeps the numbers it had at kickoff. status.json's `data` says
-when each last happened.
+that often while a game is still to start, and once more `pre_kick` seconds before each game's kickoff (the latest
+weather forecast and Kalshi's QB list: on 2026-11-01 a storm over ATL @ TB, worth ~26 yards a QB, showed up only
+after the last 3-hourly run); each game keeps the numbers it had at kickoff. status.json's `data` says when each
+last happened.
 """
 
 from __future__ import annotations
@@ -99,6 +101,8 @@ class Worker:
     refresh_every: float = 86400.0
     refreshed: float | None = None  # wall clock of the last data refresh (default: when passing.csv was written)
     preds_every: float | None = None  # seconds between recomputations of the week's pregame expectations
+    pre_kick: float = 1200.0  # ... and once more this long before each game's kickoff (with preds_every set)
+    _kicked: set = field(default_factory=set)  # games whose pre-kickoff recomputation has started
     preds_at: float | None = None  # wall clock the last recomputation started
     projected: float | None = None  # wall clock the last recomputation was applied
     weeks: set = field(default_factory=set)  # (season, week) of the games on the scoreboard
@@ -239,9 +243,16 @@ class Worker:
             for g in games:
                 if g["state"] == "pre" and (g["home"] in changed or g["away"] in changed):
                     self.games.setdefault(g["event"], GameTrack()).sig = None
+        # just before kickoff: the latest forecast (a storm can appear an hour before) and Kalshi's QB list (who
+        # starts) for the games about to start; one recomputation covers every game in that kickoff window
+        due = [g["event"] for g in games if g["state"] == "pre" and g["event"] not in self._kicked
+               and 0 <= _kickoff(g) - now <= self.pre_kick]
         if (self.preds_every and self._job is None and self.weeks and any(g["state"] == "pre" for g in games)
-                and (self.preds_at is None or wall - self.preds_at >= self.preds_every)):
+                and (due or self.preds_at is None or wall - self.preds_at >= self.preds_every)):
             self.preds_at, weeks = wall, sorted(self.weeks)
+            if due:
+                self._kicked.update(due)
+                self.log(f"projections: refreshing before kickoff ({len(due)} game{'s' if len(due) > 1 else ''})")
 
             def job():
                 out = {}
@@ -499,6 +510,14 @@ def _child_forget(season: int, week: int, teams: list[str]) -> None:
 def _child_compute(s: dict) -> tuple[dict, float]:
     started = time.perf_counter()
     return _MODEL.compute_state(s), time.perf_counter() - started
+
+
+def _kickoff(g: dict) -> float:
+    """A games.json row's kickoff as a Unix time (inf if unknown)."""
+    try:
+        return datetime.fromisoformat(g["kickoff"].replace("Z", "+00:00")).timestamp()
+    except (KeyError, ValueError, AttributeError):
+        return float("inf")
 
 
 def read_history(path: Path | str) -> list[dict]:

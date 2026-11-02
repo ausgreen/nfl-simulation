@@ -85,3 +85,25 @@ def test_between_snaps_the_live_summary_sets_the_spot_when_it_describes_the_late
     stale = dict(details, last_play={"play_id": "p1"})
     s = KF.game_state(_base(), M, stale, _stats(plays))
     assert (s["pos"], s["yl"], s["down"]) == (0, 50.0, 1) and s["clock"] == 3 * 900 + 14 * 60 + 55
+
+
+def test_overtime_possessions_from_the_plays():
+    ot = lambda seq, kind, pos, text="", **kw: _play(seq, 5, "9:00", kind, pos, text, **kw)
+    side = {HOME: 0, AWAY: 1}
+    kick = ot(1, "kickoff", HOME, "J.Smith kicks off from GB 35 to the CAR END ZONE. Touchback at CAR 35.")
+    assert KF.ot_possessions([kick], side) == [False, False]
+    # the receivers' drive is under way: not over yet
+    a1 = ot(2, "rush", AWAY, "C.Hubbard rush to the left for 4 yards to the CAR 39.")
+    assert KF.ot_possessions([kick, a1], side) == [False, False]
+    # they kick a field goal: their possession is over; GB's comes next
+    a2 = ot(3, "field_goal", AWAY, "R.Fitzgerald 44 yard field goal attempt is GOOD.", away=3)
+    assert KF.ot_possessions([kick, a1, a2], side) == [False, True]
+    # GB answers with a field goal: 3-3, both have had theirs, so the next score wins
+    h1 = ot(5, "pass", HOME, "J.Love pass complete to the right to J.Reed for 30 yards to the CAR 20.", away=3)
+    h2 = ot(6, "field_goal", HOME, "T.Smack 38 yard field goal attempt is GOOD.", home=3, away=3)
+    assert KF.ot_possessions([kick, a1, a2, h1, h2], side) == [True, True]
+    # a fumbled kickoff is credited to the kicking team: not a possession
+    fum = ot(4, "fumble", AWAY, "R.Fitzgerald kicks off from CAR 35 to the GB 5. J.Reed return for 20 yards. FUMBLE, recovered by GB.")
+    assert KF.ot_possessions([kick, a1, a2, fum], side) == [False, True]
+    # regulation plays don't count
+    assert KF.ot_possessions([_play(9, 4, "0:10", "punt", HOME, "punts")], side) == [False, False]

@@ -49,3 +49,14 @@ def test_score_markets_are_matched_to_games_parts_and_teams(monkeypatch):
         ("game", "team", "ARI", 20.5), ("3Q", "win", "TIE", None), ("2H", "total", None, 20.5)]
     assert rows[1]["ticker"] == "KXNFLSPREAD-26OCT18ARILAR-LAR7"
     assert rows[1]["ask"] == 0.45 and rows[1]["url"] == "https://kalshi.com/markets/kxnflspread/slug/kxnflspread-26oct18arilar"
+
+
+def test_a_qbs_team_comes_from_his_markets_ticker():
+    import pandas as pd
+
+    games = pd.DataFrame({"away": ["DAL", "NYG"], "home": ["PHI", "LA"]})
+    # traded or never started: the ticker says which side he plays for
+    assert kalshi._market_team("KXNFLPASSYDS-26OCT26DALPHI-DALDPRESCOTT4-175", "KXNFLPASSYDS-26OCT26DALPHI", games) == "DAL"
+    assert kalshi._market_team("KXNFLPASSYDS-26OCT26DALPHI-PHITMCKEE10-200", "KXNFLPASSYDS-26OCT26DALPHI", games) == "PHI"
+    assert kalshi._market_team("KXNFLPASSYDS-26OCT26NYGLAR-LARMSTAFFORD9-250", "KXNFLPASSYDS-26OCT26NYGLAR", games) == "LA"
+    assert kalshi._market_team("KXNFLPASSYDS-26OCT26DALPHI", "KXNFLPASSYDS-26OCT26DALPHI", games) is None

@@ -4,6 +4,7 @@ stop the others. In-game states are synthesized from the week-5 snapshot (BUF @ 
 import copy
 import gzip
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -379,3 +380,32 @@ def test_with_the_kalshi_feed_a_live_game_takes_its_state_from_it_and_falls_back
     assert w.tick() == 1
     state = json.loads((tmp_path / "site" / "state" / f"{PRE}.json").read_text())
     assert state["now"] == "LA ball · 1st & 10 at LA 25"
+
+
+def test_expectations_are_recomputed_once_just_before_a_kickoff(tmp_path, model, replay, monkeypatch):
+    from nflsim.hosted.worker import _kickoff
+
+    replay(SNAPSHOT)
+    w = _worker(tmp_path, model, [PRE])
+    w.start()
+    w.tick()
+    calls = []
+    monkeypatch.setattr(model, "compute_preds", lambda s, wk: calls.append((s, wk)) or model.preds(s, wk).reset_index())
+    monkeypatch.setattr(model, "_preds_path", lambda s, wk: tmp_path / "preds.parquet")
+    saved = dict(model.week_preds), dict(model.params)
+    try:
+        w.preds_every = 1e9  # the regular run is far off
+        w.preds_at = time.time()
+        game = next(g for g in espn.games() if g["event"] == PRE)
+        w.pre_kick = _kickoff(game) - espn.source.now() - 60  # kickoff is just outside the window: nothing yet
+        w.tick()
+        assert w._job is None and not calls
+        w.pre_kick += 120  # inside it: one recomputation
+        w.tick()
+        w._job.join()
+        w.tick()
+        assert len(calls) == 1 and PRE in w._kicked
+        w.tick()  # not again for the same game
+        assert w._job is None and len(calls) == 1
+    finally:
+        model.week_preds, model.params = saved
