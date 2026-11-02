@@ -60,7 +60,8 @@ calibration) -> vectorized simulation from any game state -> CLI replay or live 
   `ThreadingHTTPServer`; `LiveModel.compute_state(state, overrides)` returns the current state, 5 most likely
   next-snap states, the current drive's most likely outcomes (`simulate(..., drive=True)`), QB yardage chances and what moves them
   (`theta`: dropbacks left and each line's chance after the next snap's result, from `simulate(..., trace=...)`), deterministically; `compute(event, overrides)` fetches then calls it;
-  query-string overrides correct the feed's state; the page no longer has a form for them), `live_template.html` (the page).
+  query-string overrides correct the feed's state; the page no longer has a form for them), `hosted/game.html` (the page; locally its state comes from `/state/<event>.json`, simulated again only when the
+  play changes).
 - `live/kalshi_feed.py` — the same state dict as `espn.situation` + `add_summary`, from Kalshi's live data (Stats
   Perform; `game_stats` cached 1 s): score, clock, points per quarter, QB yards from the play text (matched ESPN's
   final box score for all 38 passers of 2026-10-18/30), latest passer, kickoff pending and receiver; down and spot
@@ -120,8 +121,9 @@ chances are still somewhat overconfident in the 4th quarter (2025: 11 upsets whe
 
 ## Plans
 
-`docs/decisions.md`: decisions from the page-quality pass (branch `app-quality`). `live/live_template.html` (local
-app) and `hosted/game.html` are near copies: change both.
+`docs/decisions.md`: decisions from the page-quality pass (branch `app-quality`). The local app serves the
+hosted pages on its own endpoints (`app._local`). Every page's common styles, nav and helpers are in
+`hosted/shared.css` and `hosted/shared.js`; `hosted/pages.py` inlines them when a page is published or served.
 
 `docs/hosting-plan.md`: host the live companion as a single worker that polls ESPN, re-simulates only on state
 changes, and writes static JSON to a CDN bucket. No corrections in the hosted version. Phases 1–2 (fetch/compute

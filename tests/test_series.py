@@ -37,6 +37,19 @@ def test_kalshi_points_are_the_mid_of_the_game_market_and_each_line():
     assert "OTHER" not in s.games
 
 
+def test_a_closed_market_keeps_its_last_price():
+    s = Series()
+    s.add_state(100, _card("Q4 0:10", 0.99, 0.4))
+    s.add_prices(101, _quotes(0.98, 0.99, 0.30, 0.34))
+    closed = _quotes(0.0, 1.0, 0.0, 1.0)  # no bids or offers left, nothing traded here: not a 50% chance
+    s.add_prices(102, closed)
+    closed["E"]["scores"][0]["last"] = 0.99
+    s.add_prices(103, closed)
+    g = s.json("E")
+    assert g["kalshi"]["win"] == [[101, 0.985]]
+    assert g["kalshi"]["qb:KC:250"] == [[101, 0.32]]
+
+
 def test_quarters_and_scores_are_marked():
     s = Series()
     s.add_state(100, _card("Q1 15:00", 0.6, 0.4))

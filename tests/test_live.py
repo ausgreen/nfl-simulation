@@ -197,9 +197,10 @@ def test_a_backup_throwing_the_latest_pass_marks_the_starter_out():
 
 
 def test_local_pages_point_at_this_server():
-    for page in (app.HOME, app.EDGES, app.WATCH):
+    for page in (app.HOME, app.EDGES, app.WATCH, app.GAME, app.CHART):
         html = app._local(page).decode()
         assert '"/watch"' in html and '"watch.html"' not in html and '"summary.json"' not in html
+        assert "/*@" not in html and "<!--@" not in html  # assembled, as the published pages are
 
 
 def test_the_team_scored_on_receives_even_after_a_timeout_hides_the_score():

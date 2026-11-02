@@ -5,74 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Model vs Kalshi</title>
 <style>
-:root {
-  --bg: #f4f5f2; --surface: #ffffff; --ink: #18211c; --ink-2: #4a554e; --ink-3: #646e68;
-  --rule: #d9ddd8; --rule-2: #eceee9; --accent: #1d6b48; --accent-wash: #e3f0e8; --warn: #9a5b00; --warn-wash: #fff3dc;
-  --bar: #1d6b48; --bar-2: #c9d9cf; --link: #1a5c9e;
-  --font: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0f1512; --surface: #161e1a; --ink: #e6ece8; --ink-2: #b2bcb6; --ink-3: #7f8a84;
-    --rule: #2a3530; --rule-2: #212b26; --accent: #4fb582; --accent-wash: #1c3327; --warn: #f5c34f; --warn-wash: #3a2f12;
-    --bar: #4fb582; --bar-2: #2c3d34; --link: #7cc4ff;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #0f1512; --surface: #161e1a; --ink: #e6ece8; --ink-2: #b2bcb6; --ink-3: #7f8a84;
-  --rule: #2a3530; --rule-2: #212b26; --accent: #4fb582; --accent-wash: #1c3327; --warn: #f5c34f; --warn-wash: #3a2f12;
-  --bar: #4fb582; --bar-2: #2c3d34; --link: #7cc4ff;
-}
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font); }
-a { color: var(--link); text-underline-offset: 2px; }
-a:hover { text-decoration-thickness: 2px; }
-.app { max-width: 1200px; margin: 0 auto; padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
-header.site { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 20px; border-bottom: 1px solid var(--rule); }
-.brand { font-size: 18px; font-weight: 700; letter-spacing: .02em; padding-bottom: 8px; }
-.tabs { display: flex; gap: 2px; overflow-x: auto; min-width: 0; max-width: 100%; }
-.tabs a { padding: 8px 12px; color: var(--ink-2); text-decoration: none; font-weight: 600; white-space: nowrap;
-  border-bottom: 3px solid transparent; margin-bottom: -1px; }
-.tabs a:hover { color: var(--ink); }
-.tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); }
-@keyframes flash { from { background-color: var(--warn-wash); } }
-.flash { animation: flash 1.6s ease-out; }
-.beat { width: 9px; height: 9px; border-radius: 50%; background: var(--rule); align-self: center; margin-left: auto; }
-.beat.flash { animation: beat 1.6s ease-out; }
-@media (max-width: 620px) {  /* all four tabs fit, and the dot doesn't take a line of its own */
-  header.site { position: relative; }
-  .tabs a { padding: 8px 7px; font-size: 13px; }
-  .beat { position: absolute; right: 0; top: 8px; }
-}
-@keyframes beat { from { background: var(--accent); box-shadow: 0 0 0 5px var(--accent-wash); } }
-header.top { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; justify-content: space-between; }
-h1 { margin: 0; font-size: 17px; letter-spacing: .02em; }
-.controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; color: var(--ink-2); }
-select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 4px 6px; }
-.panel { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 6px 14px 10px; overflow-x: auto; }
-.muted { color: var(--ink-3); }
-.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--rule-2); vertical-align: middle; white-space: nowrap; }
-th { font-size: 12px; color: var(--ink-3); font-weight: 600; }
-td.r, th.r { text-align: right; }
-.live { color: var(--accent); font-weight: 700; font-size: 11.5px; letter-spacing: .05em; }
-.side { display: inline-block; padding: 0 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
-.side.yes { background: var(--accent-wash); color: var(--accent); }
-.side.no { background: var(--warn-wash); color: var(--warn); }
-.gap { position: relative; height: 8px; min-width: 90px; background: var(--bar-2); border-radius: 4px; }
-.gap i { position: absolute; top: 0; bottom: 0; background: var(--bar); border-radius: 4px; }
-.bar .rng, .gap .rng { position: absolute; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%;
-  background: var(--ink); }
-.rng-key { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ink); margin: 0 2px 1px 0; }
+/*@shared.css*/
+th, td { white-space: nowrap; }
 .clear { font: 600 11px var(--font); color: var(--accent); background: var(--accent-wash); border-radius: 999px; padding: 0 6px; }
-.gap b { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--warn); }
-.err { color: var(--warn); }
-button.watch { font: inherit; font-size: 12px; color: var(--ink-2); background: none; border: 1px solid var(--rule); border-radius: 999px;
-  padding: 1px 8px; cursor: pointer; }
-button.watch[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); font-weight: 600; }
-footer { color: var(--ink-3); font-size: 12.5px; display: grid; gap: 6px; }
-footer p { margin: 0; }
 @media (max-width: 620px) {  /* a card per bet: on a phone the price and the gap can't sit off-screen */
   .panel thead { display: none; }
   .panel table, .panel tbody { display: block; }
@@ -97,11 +32,7 @@ footer p { margin: 0; }
 </head>
 <body>
 <div class="app">
-  <header class="site">
-    <span class="brand">Live Game Companion</span>
-    <nav class="tabs" aria-label="Pages"><a href="./">All games</a><a href="game.html">Game</a><a href="chart.html">Chart</a><a href="edges.html" aria-current="page">Model vs Kalshi</a><a href="watch.html">Watch list</a></nav>
-    <span class="beat" id="beat" title="Pulses when new numbers arrive"></span>
-  </header>
+  <!--@nav Model vs Kalshi-->
   <header class="top">
     <h1>Biggest gaps: model vs Kalshi</h1>
     <div class="controls">
@@ -137,67 +68,18 @@ footer p { margin: 0; }
 </div>
 
 <script>
+/*@shared.js*/
+</script>
+<script>
 (() => {
+  const { $, esc, pct, cents, kickoff, store, getJSON, nameKey, cue, listen, streaming, above, scoreChance, scoreRange, marketLabel, watchStore, watchButton } = nfl;
   const SUMMARY = "summary.json", KALSHI = "kalshi.json", GAME = "game.html", EVERY_S = 5;
-  const $ = (id) => document.getElementById(id);
-  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  const pct = (x) => (x * 100).toFixed(0) + "%";
-  const cents = (x) => Math.round(x * 100) + "¢";
   const signed = (x, d = 0) => { const r = Number(x.toFixed(d)); return (r > 0 ? "+" : r < 0 ? "−" : "±") + Math.abs(r).toFixed(d); };
-  const getJSON = async (path) => {
-    const r = await fetch(path, { cache: "no-cache" });
-    if (!r.ok) throw new Error(r.statusText);
-    return r.json();
-  };
-  const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } },
-                  set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
-  // same matching as the game page: team, then last name
-  const nameKey = (n) => String(n || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
-    .replace(/\b(jr|sr|ii|iii|iv)\b\.?/g, "").replace(/[^a-z ]/g, " ").trim().split(/\s+/).pop();
   const fee = (price) => Math.ceil(0.07 * price * (1 - price) * 100 - 1e-9) / 100;
-  const kickoff = (t) => new Date(t).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
 
-  // a cue when new numbers arrive: what changed flashes, and the dot in the tab bar pulses
-  const seen = new Map();
-  const restart = (el) => { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); };
-  function cue(...selectors) {
-    let changed = false;
-    for (const sel of selectors) document.querySelectorAll(sel).forEach((el, i) => {
-      const key = `${sel}|${el.dataset.key || i}`, html = el.innerHTML;
-      if (seen.has(key) && seen.get(key) !== html) { restart(el); changed = true; }
-      seen.set(key, html);
-    });
-    if (changed) restart($("beat"));
-  }
 
   // the model's chance of a Kalshi score market, from its simulated points (the card's "scores"; same as the game page)
   const PARTS = { game: "game", "1H": "1st half", "2H": "2nd half", "1Q": "Q1", "2Q": "Q2", "3Q": "Q3", "4Q": "Q4" };
-  // chance of more than x: [lowest value, counts from there up, games simulated] (older states: chances, no total)
-  const above = (pmf, x) => pmf[1].reduce((s, p, i) => pmf[0] + i > x ? s + p : s, 0) / (pmf[2] || 1);
-  function scoreChance(d, m, s = d.scores && d.scores[m.part]) {
-    if (!s) return null;
-    const home = m.team === d.home, tie = above(s.margin, -0.5) - above(s.margin, 0.5);
-    if (m.kind === "win") return m.team === "TIE" ? tie
-      : (home ? above(s.margin, 0.5) : 1 - above(s.margin, -0.5)) + (m.part === "game" ? tie / 2 : 0);  // a tied game pays half
-    if (m.kind === "spread") return home ? above(s.margin, m.x) : 1 - above(s.margin, -m.x);
-    if (m.kind === "total") return above(s.total, m.x);
-    return above(home ? s.home : s.away, m.x);
-  }
-  // the chance's likely range: priced with both QBs' form at its low and at its high end (spreads and winners:
-  // one QB high and the other low), as the passing-yard dots are
-  function scoreRange(d, m) {
-    const s = d.scores && d.scores[m.part];
-    if (!s || !s.margin_band) return null;
-    const at = (i) => ({ margin: s.margin_band[i], total: s.total_band[i],
-                         home: s.home_band && s.home_band[i], away: s.away_band && s.away_band[i] });
-    const a = scoreChance(d, m, at(0)), b = scoreChance(d, m, at(1));
-    return [Math.min(a, b), Math.max(a, b)];
-  }
-  const marketLabel = (m) => {
-    const n = m.x == null ? "" : Math.round(m.x + 0.5);
-    return m.kind === "win" ? (m.team === "TIE" ? "Tie" : `${m.team} wins`) : m.kind === "spread" ? `${m.team} by ${n}+`
-      : m.kind === "total" ? `${n}+ points` : `${m.team} scores ${n}+`;
-  };
 
   // points so far in a part of the game: "3–7 (10)", away first
   const partNow = (g, k) => {
@@ -257,19 +139,6 @@ footer p { margin: 0; }
   const entryOf = (b) => ({ side: b.side, ...(b.q ? { t: (b.m.lines[b.line] || {}).ticker, ev: b.g.event, type: "yards", team: b.q.team, qb: b.q.qb, line: b.line }
     : { t: b.m.ticker, ev: b.g.event, type: "score", part: b.m.part, kind: b.m.kind, team: b.m.team, x: b.m.x, label: marketLabel(b.m) }) });
 
-  // the viewer's watch list, kept in this browser only (the Watch list page reads it): [{t: ticker, ev, type, ...}]
-  const WATCH_KEY = "nflsim:watch";
-  const watchStore = {
-    all() { try { return JSON.parse(localStorage.getItem(WATCH_KEY)) || []; } catch { return []; } },
-    save(list) { try { localStorage.setItem(WATCH_KEY, JSON.stringify(list)); } catch {} },
-    has(t) { return this.all().some((e) => e.t === t); },
-    toggle(entry) {
-      const list = this.all(), i = list.findIndex((e) => e.t === entry.t);
-      if (i >= 0) list.splice(i, 1); else list.push({ side: "yes", ...entry, n: null, paid: null, added: Date.now() });
-      this.save(list);
-    },
-  };
-  const watchButton = (entry) => entry.t ? `<button type="button" class="watch" data-entry="${esc(JSON.stringify(entry))}" aria-pressed="${watchStore.has(entry.t)}">${watchStore.has(entry.t) ? "Watching" : "Watch"}</button>` : "";
   $("rows").addEventListener("click", (e) => {
     const b = e.target.closest("button.watch");
     if (!b) return;
@@ -277,18 +146,6 @@ footer p { margin: 0; }
     if (cards) show(cards, prices);
   });
 
-  // pushed updates from the worker (Server-Sent Events) when it offers them; the page polls only while none arrive
-  const EVENTS = "events";
-  let stream = null, streamAt = 0;
-  function listen(paths, onFile) {
-    if (stream) stream.close();
-    stream = null;
-    if (!window.EventSource) return;
-    stream = new EventSource(`${EVENTS}?only=${encodeURIComponent(paths.join(","))}`);
-    stream.addEventListener("file", (e) => { streamAt = Date.now(); const f = JSON.parse(e.data); onFile(f.path, f.body); });
-    stream.addEventListener("ping", () => { streamAt = Date.now(); });
-  }
-  const streaming = () => Date.now() - streamAt < 40000;  // the worker pings every 15 s
 
   function show(cards, prices) {
     const which = $("which").value;

@@ -5,68 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Chances over time</title>
 <style>
-:root {
-  --bg: #f4f5f2; --surface: #ffffff; --ink: #18211c; --ink-2: #4a554e; --ink-3: #7b857f;
-  --rule: #d9ddd8; --rule-2: #eceee9; --accent: #1d6b48; --accent-wash: #e3f0e8; --warn: #9a5b00; --warn-wash: #fff3dc;
-  --bar: #1d6b48; --bar-2: #c9d9cf; --link: #1a5c9e;
-  --font: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0f1512; --surface: #161e1a; --ink: #e6ece8; --ink-2: #b2bcb6; --ink-3: #7f8a84;
-    --rule: #2a3530; --rule-2: #212b26; --accent: #4fb582; --accent-wash: #1c3327; --warn: #f5c34f; --warn-wash: #3a2f12;
-    --bar: #4fb582; --bar-2: #2c3d34; --link: #7cc4ff;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #0f1512; --surface: #161e1a; --ink: #e6ece8; --ink-2: #b2bcb6; --ink-3: #7f8a84;
-  --rule: #2a3530; --rule-2: #212b26; --accent: #4fb582; --accent-wash: #1c3327; --warn: #f5c34f; --warn-wash: #3a2f12;
-  --bar: #4fb582; --bar-2: #2c3d34; --link: #7cc4ff;
-}
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font); }
-a { color: var(--link); text-underline-offset: 2px; }
-a:hover { text-decoration-thickness: 2px; }
-.app { max-width: 1200px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; }
-header.site { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 20px; border-bottom: 1px solid var(--rule); }
-.brand { font-size: 18px; font-weight: 700; letter-spacing: .02em; padding-bottom: 8px; }
-.tabs { display: flex; gap: 2px; overflow-x: auto; }
-.tabs a { padding: 8px 12px; color: var(--ink-2); text-decoration: none; font-weight: 600; white-space: nowrap;
-  border-bottom: 3px solid transparent; margin-bottom: -1px; }
-.tabs a:hover { color: var(--ink); }
-.tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); }
-@keyframes flash { from { background-color: var(--warn-wash); } }
-.flash { animation: flash 1.6s ease-out; }
-.beat { width: 9px; height: 9px; border-radius: 50%; background: var(--rule); align-self: center; margin-left: auto; }
-.beat.flash { animation: beat 1.6s ease-out; }
-@keyframes beat { from { background: var(--accent); box-shadow: 0 0 0 5px var(--accent-wash); } }
-header.top { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; justify-content: space-between; }
-h1 { margin: 0; font-size: 17px; letter-spacing: .02em; }
-.controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; color: var(--ink-2); }
-select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 4px 6px; }
-.panel { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 6px 14px 10px; overflow-x: auto; }
-.muted { color: var(--ink-3); }
-.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--rule-2); vertical-align: middle; white-space: nowrap; }
-th { font-size: 12px; color: var(--ink-3); font-weight: 600; }
-td.r, th.r { text-align: right; }
-.live { color: var(--accent); font-weight: 700; font-size: 11.5px; letter-spacing: .05em; }
-.side { display: inline-block; padding: 0 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
-.side.yes { background: var(--accent-wash); color: var(--accent); }
-.side.no { background: var(--warn-wash); color: var(--warn); }
-.gap { position: relative; height: 8px; min-width: 90px; background: var(--bar-2); border-radius: 4px; }
-.gap i { position: absolute; top: 0; bottom: 0; background: var(--bar); border-radius: 4px; }
-.bar .rng, .gap .rng { position: absolute; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%;
-  background: var(--ink); }
-.rng-key { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ink); margin: 0 2px 1px 0; }
-.gap b { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--warn); }
-.err { color: var(--warn); }
-button.watch { font: inherit; font-size: 12px; color: var(--ink-2); background: none; border: 1px solid var(--rule); border-radius: 999px;
-  padding: 1px 8px; cursor: pointer; }
-button.watch[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); font-weight: 600; }
-footer { color: var(--ink-3); font-size: 12.5px; display: grid; gap: 6px; }
-footer p { margin: 0; }
+/*@shared.css*/
 
 
 .chart { position: relative; }
@@ -74,7 +13,7 @@ footer p { margin: 0; }
 .chart .grid { stroke: var(--rule-2); stroke-width: 1; }
 .chart .axis { fill: var(--ink-3); font: 11px var(--mono); }
 .chart .mark { stroke: var(--rule); stroke-width: 1; stroke-dasharray: 3 3; }
-.chart .mark-label { fill: var(--ink-3); font: 600 11px var(--font); }
+.chart .mark-label { fill: var(--ink-3); font: 600 11px var(--font); stroke: var(--surface); stroke-width: 3px; paint-order: stroke; }
 .chart .score { fill: var(--warn); }
 .chart .model { fill: none; stroke: var(--accent); stroke-width: 2.25; }
 .chart .kalshi { fill: none; stroke: var(--link); stroke-width: 1.75; stroke-dasharray: 5 3; }
@@ -92,16 +31,13 @@ footer p { margin: 0; }
 </head>
 <body>
 <div class="app">
-  <header class="site">
-    <span class="brand">Live Game Companion</span>
-    <nav class="tabs" aria-label="Pages"><a href="./">All games</a><a href="game.html">Game</a><a href="chart.html" aria-current="page">Chart</a><a href="edges.html">Model vs Kalshi</a><a href="watch.html">Watch list</a></nav>
-    <span class="beat" id="beat" title="Pulses when new numbers arrive"></span>
-  </header>
+  <!--@nav Chart-->
   <header class="top">
     <h1 id="title">Chances over time</h1>
     <div class="controls">
       <label>Game <select id="game"></select></label>
       <label>Market <select id="market"></select></label>
+      <label>Show <select id="range"><option value="0">Whole game</option><option value="-1">With pregame</option><option value="300">Last 5 min</option><option value="900">Last 15 min</option><option value="1800">Last 30 min</option><option value="3600">Last hour</option></select></label>
     </div>
   </header>
   <section class="panel">
@@ -110,23 +46,22 @@ footer p { margin: 0; }
     <div class="chart" id="chart"><p class="muted">Loading…</p></div>
   </section>
   <footer>
-    <p>The model's chance and Kalshi's price for the market, from the first update of the game on. A line gains a point
-      when it moves by at least 1 point (1¢); dashed vertical lines mark quarters, orange dots scores. Times are your
+    <p>The model's chance and Kalshi's price for the market, from kickoff on (before kickoff, the prices so far). A line gains a point
+      when it moves by at least 1 point (1¢); Show narrows it to the latest minutes or adds the pregame; dashed vertical lines mark quarters, orange dots scores. Times are your
       local time. For information only.</p>
   </footer>
 </div>
 
 <script>
+/*@shared.js*/
+</script>
+<script>
 (() => {
-  const EVERY_S = 10, EVENTS = "events";
-  const $ = (id) => document.getElementById(id);
-  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  const pct = (x) => x == null ? "—" : (x * 100).toFixed(0) + "%";
-  const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } },
-                  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} } };
-  const getJSON = async (path) => { const r = await fetch(path, { cache: "no-cache" }); if (!r.ok) throw new Error(r.status === 404 ? "no chart for this game yet" : r.statusText); return r.json(); };
+  const { $, esc, pct, kickoff, store, restart, listen, streaming } = nfl;
+  const getJSON = (path) => nfl.getJSON(path, "no chart for this game yet");
+  const EVERY_S = 10;
   const hhmm = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  let games = [], data = null, hover = null, view = null, stream = null, streamAt = 0, busy = false;
+  let games = [], data = null, hover = null, view = null, busy = false;
 
   // the value of a step series at time t (its last point at or before t)
   const at = (pts, t) => { let v = null; for (const [ti, x] of pts || []) { if (ti > t) break; v = x; } return v; };
@@ -160,11 +95,16 @@ footer p { margin: 0; }
     $("title").textContent = `${data.away} @ ${data.home} · ${marketLabel(key)}`;
     const all = [...model, ...kalshi];
     if (!all.length) { view = null; $("chart").innerHTML = `<p class="muted">No numbers for this market yet.</p>`; $("now").innerHTML = ""; return; }
-    const t0 = Math.min(...all.map((p) => p[0])), live = g && g.state === "in";
+    const live = g && g.state === "in", first = Math.min(...all.map((p) => p[0]));
     const t1 = Math.max(...all.map((p) => p[0]), ...(data.marks || []).map((m) => m[0]), live ? Date.now() / 1000 : 0);
+    const kick = g ? Date.parse(g.kickoff) / 1000 : NaN, range = +$("range").value;
+    // the time span shown: from kickoff, unless the pregame is asked for or there is nothing else yet
+    const start = range < 0 || !(kick < t1) ? first : Math.max(first, kick), t0 = range > 0 ? Math.max(start, t1 - range) : start;
     const W = $("chart").clientWidth || 800, H = 340, L = 40, R = 12, T = 22, B = 26;
     const x = (t) => L + (t1 > t0 ? (t - t0) / (t1 - t0) : 0) * (W - L - R), y = (v) => T + (1 - v) * (H - T - B);
-    const path = (pts) => {
+    const path = (all) => {  // from the value at the left edge on
+      const start = at(all, t0), rest = all.filter((p) => p[0] > t0);
+      const pts = start != null ? [[t0, start], ...rest] : rest;
       if (!pts.length) return "";
       let d = `M${x(pts[0][0]).toFixed(1)},${y(pts[0][1]).toFixed(1)}`;
       for (let i = 1; i < pts.length; i++) d += `H${x(pts[i][0]).toFixed(1)}V${y(pts[i][1]).toFixed(1)}`;
@@ -172,14 +112,20 @@ footer p { margin: 0; }
     };
     let svg = "";
     for (const v of [0, .25, .5, .75, 1]) svg += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text class="axis" x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${v * 100}%</text>`;
-    const span = t1 - t0, step = span > 4 * 3600 ? 3600 : span > 7200 ? 1800 : span > 2400 ? 900 : 300;
+    const perS = (W - L - R) / Math.max(t1 - t0, 1);  // the smallest step whose time labels don't touch
+    const step = [60, 300, 900, 1800, 3600, 7200, 14400, 28800, 86400].find((s) => s * perS >= 70) || 172800;
     for (let t = Math.ceil(t0 / step) * step; t <= t1; t += step) svg += `<text class="axis" x="${x(t)}" y="${H - 8}" text-anchor="middle">${hhmm(t)}</text>`;
+    let labels = "", labelEnd = -Infinity;  // quarter labels too close together keep their line and lose the text
     for (const [t, label] of data.marks || []) {
       if (t < t0) continue;
       if (/–/.test(label)) svg += `<circle class="score" cx="${x(t)}" cy="${T - 8}" r="3.5"><title>${esc(label)} · ${hhmm(t)}</title></circle>`;
-      else svg += `<line class="mark" x1="${x(t)}" x2="${x(t)}" y1="${T - 2}" y2="${H - B}"/><text class="mark-label" x="${x(t) + 4}" y="${T + 10}">${esc(label)}</text>`;
+      else {
+        const w = 7 * label.length, right = x(t) + 4 + w > W - R, from = right ? x(t) - 4 - w : x(t) + 4, show = from >= labelEnd;
+        svg += `<line class="mark" x1="${x(t)}" x2="${x(t)}" y1="${T - 2}" y2="${H - B}"/>`;
+        if (show) { labels += `<text class="mark-label" x="${from}" y="${T + 10}">${esc(label)}</text>`; labelEnd = from + w + 4; }
+      }
     }
-    svg += `<path class="kalshi" d="${path(kalshi)}"/><path class="model" d="${path(model)}"/>`;
+    svg += `<path class="kalshi" d="${path(kalshi)}"/><path class="model" d="${path(model)}"/>${labels}`;
     svg += `<line class="cursor" id="cursor" x1="0" x2="0" y1="${T}" y2="${H - B}" visibility="hidden"/>`;
     $("chart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(marketLabel(key))} over time">${svg}</svg><div class="tip" id="tip" hidden></div>`;
     const svgEl = $("chart").querySelector("svg");
@@ -199,7 +145,7 @@ footer p { margin: 0; }
     const { x, t1, W, model, kalshi } = view, tnow = hover ?? t1, m = at(model, tnow), k = at(kalshi, tnow);
     const score = [...(data.marks || [])].filter((mk) => /–/.test(mk[1]) && mk[0] <= tnow).pop();
     $("now").innerHTML = [["Model", pct(m)], ["Kalshi", pct(k)],
-      ["Gap", m == null || k == null ? "—" : `${m - k >= 0 ? "+" : "−"}${Math.abs(Math.round((m - k) * 100))}`],
+      ["Gap", m == null || k == null ? "—" : (() => { const g = Math.round((m - k) * 100); return g === 0 ? "±0" : `${g > 0 ? "+" : "−"}${Math.abs(g)}`; })()],
       [hover != null ? "At" : "Updated", hhmm(tnow)], ["Score", score ? esc(score[1]) : "—"]]
       .map(([l, v]) => `<div><span class="lbl">${l}</span><span class="v">${v}</span></div>`).join("");
     const cur = $("cursor"), tip = $("tip");
@@ -216,7 +162,7 @@ footer p { margin: 0; }
     data = d;
     fillMarkets();
     draw();
-    const b = $("beat"); b.classList.remove("flash"); void b.offsetWidth; b.classList.add("flash");
+    restart($("beat"));
   }
 
   async function load() {
@@ -227,12 +173,7 @@ footer p { margin: 0; }
   }
 
   function follow() {
-    if (stream) stream.close();
-    stream = null;
-    if (!window.EventSource) return;
-    stream = new EventSource(`${EVENTS}?only=${encodeURIComponent("series/" + $("game").value + ".json")}`);
-    stream.addEventListener("file", (e) => { streamAt = Date.now(); const f = JSON.parse(e.data); setData(f.body); });
-    stream.addEventListener("ping", () => { streamAt = Date.now(); });
+    listen([`series/${$("game").value}.json`], (path, body) => setData(body));
   }
 
   async function start() {
@@ -253,8 +194,10 @@ footer p { margin: 0; }
     load(); follow();
   });
   $("market").addEventListener("change", () => { store.set("chart:market", $("market").value); hover = null; draw(); });
+  $("range").value = ["0", "-1", "300", "900", "1800", "3600"].includes(store.get("chart:range")) ? store.get("chart:range") : "0";
+  $("range").addEventListener("change", () => { store.set("chart:range", $("range").value); hover = null; draw(); });
   window.addEventListener("resize", () => draw());
-  setInterval(() => { if (!busy && Date.now() - streamAt > 40000) { busy = true; load().finally(() => { busy = false; }); } }, EVERY_S * 1000);
+  setInterval(() => { if (!busy && !streaming()) { busy = true; load().finally(() => { busy = false; }); } }, EVERY_S * 1000);
   start();
 })();
 </script>

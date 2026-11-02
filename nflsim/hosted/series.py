@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 
 STEP = 0.01   # a series gains a point when its value moves this much (1 point of chance, 1 cent)
+WIDE = 0.5    # a bid and ask further apart than this say nothing about the chance (a closed market: 0 and 1)
 
 
 def _t(t) -> int:
@@ -20,9 +21,9 @@ def _t(t) -> int:
 
 def _mid(q: dict) -> float | None:
     bid, ask, last = q.get("bid"), q.get("ask"), q.get("last")
-    if bid is not None and ask is not None and ask >= bid:
+    if bid is not None and ask is not None and 0 <= ask - bid <= WIDE:
         return (bid + ask) / 2
-    return last if last is not None else ask
+    return last if last is not None else None if bid is not None and ask is not None else ask
 
 
 class Series:

@@ -56,6 +56,7 @@ from ..data import Dataset
 from ..live import espn
 from ..live.app import LiveModel, _f, summary
 from .publish import max_age
+from .pages import render
 from .series import Series
 
 PAGE = Path(__file__).with_name("index.html")
@@ -169,11 +170,11 @@ class Worker:
 
     def start(self) -> None:
         """Publish the page and set up every game on the scoreboard, so the first update of a game is fast."""
-        self.put("index.html", PAGE.read_bytes(), "text/html; charset=utf-8")
-        self.put("game.html", GAME_PAGE.read_bytes(), "text/html; charset=utf-8")
-        self.put("edges.html", EDGES_PAGE.read_bytes(), "text/html; charset=utf-8")
-        self.put("watch.html", WATCH_PAGE.read_bytes(), "text/html; charset=utf-8")
-        self.put("chart.html", CHART_PAGE.read_bytes(), "text/html; charset=utf-8")
+        self.put("index.html", render(PAGE).encode(), "text/html; charset=utf-8")
+        self.put("game.html", render(GAME_PAGE).encode(), "text/html; charset=utf-8")
+        self.put("edges.html", render(EDGES_PAGE).encode(), "text/html; charset=utf-8")
+        self.put("watch.html", render(WATCH_PAGE).encode(), "text/html; charset=utf-8")
+        self.put("chart.html", render(CHART_PAGE).encode(), "text/html; charset=utf-8")
         if self.history is not None:  # today's series so far (yesterday's file too: a night game crosses UTC midnight)
             now = espn.source.now()
             for day in sorted({datetime.fromtimestamp(now - 86400, timezone.utc), datetime.fromtimestamp(now, timezone.utc)}):

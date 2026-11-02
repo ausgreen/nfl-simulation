@@ -5,90 +5,60 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Live Game Companion</title>
 <style>
-:root {
-  --bg: #f4f5f2; --surface: #ffffff; --ink: #18211c; --ink-2: #4a554e; --ink-3: #646e68;
-  --rule: #d9ddd8; --rule-2: #eceee9; --accent: #1d6b48; --accent-wash: #e3f0e8; --warn: #9a5b00; --warn-wash: #fff3dc;
-  --bar: #1d6b48; --bar-2: #c9d9cf; --link: #1a5c9e;
-  --font: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0f1512; --surface: #161e1a; --ink: #e6ece8; --ink-2: #b2bcb6; --ink-3: #7f8a84;
-    --rule: #2a3530; --rule-2: #212b26; --accent: #4fb582; --accent-wash: #1c3327; --warn: #f5c34f; --warn-wash: #3a2f12;
-    --bar: #4fb582; --bar-2: #2c3d34; --link: #7cc4ff;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #0f1512; --surface: #161e1a; --ink: #e6ece8; --ink-2: #b2bcb6; --ink-3: #7f8a84;
-  --rule: #2a3530; --rule-2: #212b26; --accent: #4fb582; --accent-wash: #1c3327; --warn: #f5c34f; --warn-wash: #3a2f12;
-  --bar: #4fb582; --bar-2: #2c3d34; --link: #7cc4ff;
-}
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font); }
-a { color: var(--link); text-underline-offset: 2px; }
-a:hover { text-decoration-thickness: 2px; }
-.app { max-width: 1100px; margin: 0 auto; padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
-header.site { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 20px; border-bottom: 1px solid var(--rule); }
-.brand { font-size: 18px; font-weight: 700; letter-spacing: .02em; padding-bottom: 8px; }
-.tabs { display: flex; gap: 2px; overflow-x: auto; min-width: 0; max-width: 100%; }
-.tabs a { padding: 8px 12px; color: var(--ink-2); text-decoration: none; font-weight: 600; white-space: nowrap;
-  border-bottom: 3px solid transparent; margin-bottom: -1px; }
-.tabs a:hover { color: var(--ink); }
-.tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); }
-@keyframes flash { from { background-color: var(--warn-wash); } }
-.flash { animation: flash 1.6s ease-out; }
-.beat { width: 9px; height: 9px; border-radius: 50%; background: var(--rule); align-self: center; margin-left: auto; }
-.beat.flash { animation: beat 1.6s ease-out; }
-@media (max-width: 620px) {  /* all four tabs fit, and the dot doesn't take a line of its own */
-  header.site { position: relative; }
-  .tabs a { padding: 8px 7px; font-size: 13px; }
-  .beat { position: absolute; right: 0; top: 8px; }
-}
-@keyframes beat { from { background: var(--accent); box-shadow: 0 0 0 5px var(--accent-wash); } }
-header.top { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-h1 { margin: 0; font-size: 20px; letter-spacing: .02em; }
-.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+/*@shared.css*/
+header.top { align-items: center; justify-content: flex-start; }
+.controls { gap: 8px; color: inherit; }
 select, input, button { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 8px; }
 button { cursor: pointer; }
-button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-.panel { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px; }
-.score { display: flex; flex-wrap: wrap; gap: 18px; align-items: baseline; }
-.score .teams { font-size: 26px; font-weight: 700; font-family: var(--mono); }
-.score .meta { color: var(--ink-2); }
+.panel { padding: 14px; overflow-x: visible; }
+button.watch { margin-left: 4px; }
 .now { font-size: 18px; font-weight: 600; margin-top: 6px; }
-.muted { color: var(--ink-3); }
 .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--accent-wash); color: var(--accent); }
 .badge.warn { background: var(--warn-wash); color: var(--warn); }
 .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-weight: 700; background: var(--accent); color: var(--bg); white-space: nowrap; }
 .pill.sm { padding: 0 8px; font-size: 12px; font-weight: 600; }
 .pill.same { background: transparent; color: var(--ink-2); border: 1px solid var(--rule); }
 .pill.change { background: var(--warn); color: var(--bg); }
-.teams .has { box-shadow: inset 0 -4px 0 var(--accent); padding-bottom: 2px; }
-.grid2 { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.grid2 { margin-top: 6px; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 14px; align-items: start; }
 @media (max-width: 820px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
 .grid2[hidden] { display: none; }
 @media (max-width: 620px) { table.odds tr > :nth-child(2) { display: none; } }  /* the chance bars: room for the result */
 h2 { margin: 0 0 10px; font-size: 15px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); }
-table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--rule-2); vertical-align: middle; }
-th { font-size: 12px; color: var(--ink-3); font-weight: 600; }
-td.r, th.r { text-align: right; }
-.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .bar { position: relative; height: 8px; background: var(--bar-2); border-radius: 4px; min-width: 60px; }
+.bar { margin-bottom: 5px; }
+/* on the bar, the Kalshi ask; under it, the likely range: they no longer sit on top of each other */
+.bar b.ask { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--ink); box-shadow: 0 0 0 1px var(--surface); }
+.bar .range { position: absolute; top: calc(100% + 2px); height: 2px; min-width: 2px; background: var(--ink-2); }
+.range-key { display: inline-block; width: 16px; height: 2px; background: var(--ink-2); vertical-align: 3px; margin-right: 4px; }
+.mark-key { display: inline-block; width: 2px; height: 12px; background: var(--ink); vertical-align: -2px; margin-right: 4px; }
+.mix { margin-top: 10px; color: var(--ink-2); }
+.board { display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: baseline; }
+.board h1 { display: flex; gap: 24px; font: 700 32px/1.1 var(--font); letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.board h1 > span { display: inline-flex; gap: 10px; align-items: baseline; }
+.board .abbr { font-weight: 600; color: var(--ink-2); }
+.board .has .abbr { color: var(--ink); }
+.board .has .abbr::after { content: ""; display: inline-block; width: 13px; height: 8px; margin-left: 6px; border-radius: 50%; background: var(--accent); vertical-align: 4px; }
+.board .meta { color: var(--ink-2); }
+.winp { margin-top: 12px; max-width: 620px; }
+.winp .wp { height: 12px; border-radius: 6px; }
+.winp .wp-lbl { font-size: 14px; margin-top: 3px; }
+.box { margin-top: 12px; font-size: 13px; width: auto; min-width: min(100%, 480px); }
+.box th, .box td { padding: 3px 12px 3px 0; text-align: right; border: 0; vertical-align: top; }
+.box th:first-child, .box td:first-child { text-align: left; font-weight: 600; }
+.box td { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.box td:first-child, .box .odds td { font-family: var(--font); }
+.box .total { font-weight: 700; }
+.box small { display: block; color: var(--ink-3); font-size: 11.5px; font-weight: 400; }
+.box .odds td { color: var(--ink-3); font-size: 11.5px; font-weight: 400; }
+details.play > summary { cursor: pointer; font-weight: 600; color: var(--ink-2); padding: 6px 0; }
+details.play[hidden] { display: none; }
+.lines .group th { padding-top: 14px; color: var(--ink-2); font-size: 13px; }
+.lines .group button { font-size: 12px; padding: 1px 8px; margin-left: 8px; border-radius: 999px; font-weight: 400; }
+@media (max-width: 620px) {
+  .lines td:first-child { white-space: nowrap; }
+  .lines tr > :nth-child(4) { display: none; }  /* the bar: the chance and the price say it on a phone */
+}
 .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--bar); border-radius: 4px; }
-.bar b.ask { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--warn); }
-.bar .rng, .gap .rng { position: absolute; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%;
-  background: var(--ink); }
-.rng-key { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ink); margin: 0 2px 1px 0; }
-.mark-key { display: inline-block; width: 2px; height: 12px; background: var(--warn); vertical-align: -2px; margin-right: 4px; }
-.mix { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.final { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; }
-.final .lbl { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); font-weight: 600; }
-.final .sc { font: 700 24px var(--mono); }
-.quarters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 12px; padding-top: 10px;
-  border-top: 1px solid var(--rule-2); font-size: 12.5px; color: var(--ink-3); }
-@media (max-width: 620px) { .quarters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.quarters b { color: var(--ink-2); font-weight: 600; }
 .parts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .parts button { padding: 3px 10px; border-radius: 999px; font-size: 13px; }
 .now-part { font-weight: 600; margin-bottom: 6px; }
@@ -100,9 +70,6 @@ td.r, th.r { text-align: right; }
   margin-bottom: -1px; font-weight: 600; color: var(--ink-2); }
 .mkt-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
 .markets [hidden], .markets[hidden] { display: none; }
-button.watch { font: inherit; font-size: 11px; color: var(--ink-2); background: none; border: 1px solid var(--rule); border-radius: 999px;
-  padding: 0 7px; margin-left: 4px; cursor: pointer; }
-button.watch[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); font-weight: 600; }
 .qbs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 14px; }
 .qb h3 { margin: 0; font-size: 16px; }
 .qb .sub { color: var(--ink-2); margin: 2px 0 8px; }
@@ -110,35 +77,36 @@ button.watch[aria-pressed="true"] { color: var(--accent); border-color: var(--ac
 .qb .theta .badge { margin-left: 4px; }
 .recap { margin-top: 8px; color: var(--ink-2); }
 .recap b { color: var(--ink); }
-.stale { background: var(--warn-wash); color: var(--warn); border: 1px solid var(--warn); border-radius: 8px; padding: 10px 14px; }
-.stale[hidden] { display: none; }
-.err { color: var(--warn); }
-footer { color: var(--ink-3); font-size: 12.5px; }
 </style>
 </head>
 <body>
 <div class="app">
-  <header class="site">
-    <span class="brand">Live Game Companion</span>
-    <nav class="tabs" aria-label="Pages"><a href="./">All games</a><a href="game.html" aria-current="page">Game</a><a href="chart.html">Chart</a><a href="edges.html">Model vs Kalshi</a><a href="watch.html">Watch list</a></nav>
-    <span class="beat" id="beat" title="Pulses when new numbers arrive"></span>
-  </header>
+  <!--@nav Game-->
   <header class="top">
-    <div class="controls">
-      <select id="game" aria-label="Game"></select>
-      <label class="muted"><input type="checkbox" id="auto" checked> auto-refresh</label>
-      <select id="every" aria-label="Refresh interval"><option value="5">5 s</option><option value="10" selected>10 s</option><option value="30">30 s</option></select>
-      <button id="now" class="primary">Refresh</button>
-    </div>
+    <div class="controls"><label class="muted">Game <select id="game"></select></label></div>
   </header>
 
   <div class="stale" id="stale" role="status" hidden></div>
 
   <section class="panel" id="head" aria-live="polite"><span class="muted">Pick a game.</span></section>
 
-  <section class="panel" id="proj" hidden></section>
+  <section class="markets" id="markets" hidden>
+    <div class="mkt-tabs" id="mkt" role="tablist" aria-label="Markets"><button type="button" role="tab" data-set="yards">QB passing yards</button><button type="button" role="tab" data-set="scores">Score</button></div>
+    <div class="qbs" id="qbs" role="tabpanel"></div>
+    <section class="panel" id="lines" role="tabpanel" hidden>
+        <div class="parts" id="parts" role="group" aria-label="Part of the game"></div>
+      <div class="now-part" id="part-now"></div>
+      <table class="lines"><thead><tr><th>Market</th><th class="r">Chance</th><th class="r" title="Kalshi yes price (ask), before fees">Kalshi</th><th></th></tr></thead>
+        <tbody id="lines-rows"></tbody></table>
+      <div class="muted" style="font-size:12px;margin-top:4px"><span class="range-key"></span>likely range of the chance ·
+      <span class="mark-key"></span>Kalshi ask: bar past the mark = the model rates it above the price.
+        Long lists start with the 5 lines nearest a coin flip. Quarters don't count overtime; the 2nd half and the game do.</div>
+    </section>
+  </section>
 
-  <div class="grid2" id="play" hidden>
+  <details class="play" id="play" open hidden>
+    <summary>Next snap and drive</summary>
+    <div class="grid2">
     <section class="panel">
       <h2>The next snap</h2>
       <table class="odds"><thead><tr><th class="r">Chance</th><th></th><th>Outcome</th><th>Result</th></tr></thead><tbody id="next"></tbody></table>
@@ -148,66 +116,40 @@ footer { color: var(--ink-3); font-size: 12.5px; }
       <h2 id="drive-title">This drive</h2>
       <table class="odds"><thead><tr><th class="r">Chance</th><th></th><th>Outcome</th><th class="r">Plays</th><th class="r">Time</th></tr></thead><tbody id="drive"></tbody></table>
     </section>
-  </div>
-
-  <section class="markets" id="markets" hidden>
-    <div class="mkt-tabs" id="mkt" role="tablist" aria-label="Markets"><button type="button" role="tab" data-set="yards">QB passing yards</button><button type="button" role="tab" data-set="scores">Score</button></div>
-    <div class="qbs" id="qbs" role="tabpanel"></div>
-    <section class="panel" id="lines" role="tabpanel" hidden>
-        <div class="parts" id="parts" role="group" aria-label="Part of the game"></div>
-      <div class="now-part" id="part-now"></div>
-      <table><thead><tr><th>Market</th><th class="r">Chance</th><th class="r" title="Kalshi yes price (ask), before fees">Kalshi</th><th></th></tr></thead>
-        <tbody id="lines-rows"></tbody></table>
-      <div class="muted" style="font-size:12px;margin-top:4px"><span class="rng-key"></span><span class="rng-key"></span>likely range of the chance ·
-      <span class="mark-key"></span>Kalshi ask: bar past the mark = the model rates it above the price.
-        Quarters don't count overtime; the 2nd half and the game do.</div>
-    </section>
-  </section>
+    </div>
+  </details>
 
   <footer>
-    Updated from ESPN's live feed, which runs a few seconds behind TV and can briefly lag a score or a change of possession.
+    Live game data can run behind TV and briefly lag a score or a change of possession.
     For information only.
   </footer>
 </div>
 
 <script>
+/*@shared.js*/
+</script>
+<script>
 (() => {
-  const $ = (id) => document.getElementById(id);
-  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  const pct = (x, d = 0) => x == null ? "—" : (x * 100).toFixed(d) + "%";
-  const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } },
-                  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} } };
-  let timer = null, last = null, busy = false, prices = null;
+  const { $, esc, pct, cents, ago, kickoff, store, nameKey, seen, cue, listen, streaming, above, scoreChance, scoreRange, marketLabel, watchStore, watchButton } = nfl;
+  const EVERY_S = 10;  // how often the page polls while no pushed updates arrive
+  let last = null, busy = false, prices = null;
+  const getJSON = (path) => nfl.getJSON(path, "no update yet for this game");
   const STALE_S = 60;  // worker heartbeat older than this: show the banner
   const STATS_S = 2 * 86400;  // stats refreshed longer ago than this: say so
-  const getJSON = async (path) => {
-    const r = await fetch(path, { cache: "no-cache" });
-    if (!r.ok) throw new Error(r.status === 404 ? "no update yet for this game" : r.statusText);
-    return r.json();
-  };
-  const ago = (s) => s < 120 ? `${Math.round(s)} s` : s < 7200 ? `${Math.round(s / 60)} min` : s < 172800 ? `${Math.round(s / 3600)} h` : `${Math.round(s / 86400)} days`;
+
+  // kickoffs in the viewer's time (the feed's own text is in Eastern); the states don't carry them, the game list does
+  let games = [];
+  const when = (d) => { const g = d.status === "pre" && games.find((x) => x.event === d.event); return g ? kickoff(g.kickoff) : d.detail; };
 
   async function loadGames() {
-    const g = await getJSON("games.json");
+    const g = games = await getJSON("games.json");
     const current = $("game").value;  // the periodic reload keeps the viewer's pick
-    $("game").innerHTML = g.map((x) => `<option value="${x.event}">${esc(x.away)} @ ${esc(x.home)} · ${x.state === "in" ? esc(x.detail) + ` (${x.awayScore}–${x.homeScore})` : esc(x.detail)}</option>`).join("");
+    $("game").innerHTML = g.map((x) => `<option value="${x.event}">${esc(x.away)} @ ${esc(x.home)} · ${x.state === "in" ? esc(x.detail) + ` (${x.awayScore}–${x.homeScore})` : x.state === "pre" ? esc(kickoff(x.kickoff)) : esc(x.detail)}</option>`).join("");
     const asked = new URLSearchParams(location.search).get("event");
     const pick = [current, asked, store.get("live:game")].find((e) => e && g.some((x) => x.event === e));
     if (pick) $("game").value = pick;
   }
 
-  // pushed updates from the worker (Server-Sent Events) when it offers them; the page polls only while none arrive
-  const EVENTS = "events";
-  let stream = null, streamAt = 0;
-  function listen(paths, onFile) {
-    if (stream) stream.close();
-    stream = null;
-    if (!window.EventSource) return;
-    stream = new EventSource(`${EVENTS}?only=${encodeURIComponent(paths.join(","))}`);
-    stream.addEventListener("file", (e) => { streamAt = Date.now(); const f = JSON.parse(e.data); onFile(f.path, f.body); });
-    stream.addEventListener("ping", () => { streamAt = Date.now(); });
-  }
-  const streaming = () => Date.now() - streamAt < 40000;  // the worker pings every 15 s
 
   let status = null;
   function follow() {  // the stream for the game on screen
@@ -245,28 +187,41 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     const stats = st.data && st.data.stats ? (Date.now() - Date.parse(st.data.stats)) / 1000 : 0;
     const oldStats = stats > STATS_S;
     el.hidden = behind <= limit && !err && !oldStats;
-    el.textContent = behind > limit ? `Updates have paused: the last check of ESPN's feed was ${ago(behind)} ago. Numbers may be out of date.`
+    el.textContent = behind > limit ? `Updates have paused: the last check of the live feed was ${ago(behind)} ago. Numbers may be out of date.`
       : err ? "This game's latest update failed; showing the last good numbers."
       : oldStats ? `Player stats were last updated ${ago(stats)} ago; pregame numbers may be out of date.` : "";
   }
 
-  function renderProj(d) {
-    const el = $("proj"), f = d.final, qs = d.quarters || [];
-    el.hidden = !f && !qs.length;
-    if (el.hidden) return;
-    const pts = (v, done) => done ? String(Math.round(v)) : v.toFixed(1);
-    const fav = f && (f.homeWin >= 0.5 ? [d.home, f.homeWin] : [d.away, f.awayWin]);
-    const head = !f || d.status === "post" ? "" : `<div class="final"><span class="lbl">${d.status === "post" ? "Final" : "Projected final"}</span>
-        <span class="sc">${esc(d.away)} ${Math.round(f.away)} – ${esc(d.home)} ${Math.round(f.home)}</span>
-        ${d.status === "post" ? "" : `<span class="badge">${esc(fav[0])} win ${pct(fav[1])}</span>`}</div>`;
-    const cell = (q) => {
-      const done = q.state === "done";
-      const tag = done ? "final" : q.state === "live" ? "now" : "expected";
-      const odds = done ? (q.home === q.away ? "tied" : `${esc(q.home > q.away ? d.home : d.away)} won the quarter`)
-        : `wins quarter: ${esc(d.away)} ${pct(q.awayWin)} · ${esc(d.home)} ${pct(q.homeWin)} · tie ${pct(q.tie)}`;
-      return `<div><b>Q${q.q}</b> ${tag}<br><span class="num">${esc(d.away)} ${pts(q.away, done)} – ${esc(d.home)} ${pts(q.home, done)}</span><br>${odds}</div>`;
+  // the box score: real points in whole numbers, what's still expected in small type; it adds up to the final
+  function boxScore(d) {
+    const qs = d.quarters || [];
+    if (!qs.length) return "";
+    const sofar = (q) => q.state === "live" && d.scores && d.scores[`${q.q}Q`] ? d.scores[`${q.q}Q`].now : null;  // [home, away]
+    const cell = (q, side) => {
+      if (q.state === "done") return String(Math.round(q[side]));
+      const now = sofar(q), exp = `<small title="Expected by the end of the quarter">${q[side].toFixed(1)}</small>`;
+      return now ? `${now[side === "home" ? 0 : 1]}${exp}` : exp;
     };
-    el.innerHTML = head + (d.status === "post" ? recap(d) : "") + (qs.length ? `<div class="quarters">${qs.map(cell).join("")}</div>` : "");
+    const wentOT = d.overtime || /OT/.test(d.detail || "");
+    const otPts = (side) => d.score[side] - qs.reduce((s, q) => s + q[side], 0);
+    const pre = d.status === "pre", odds = qs.some((q) => q.state !== "done");
+    const row = (t, side) => `<tr data-key="${side}"><td>${esc(t)}</td>${qs.map((q) => `<td>${cell(q, side)}</td>`).join("")}${
+      wentOT ? `<td>${otPts(side)}</td>` : ""}<td class="total">${pre ? `<small>${d.final ? Math.round(d.final[side]) : "—"}</small>` : d.score[side]}</td></tr>`;
+    const fav = (q) => {
+      if (q.state === "done") return "";
+      const [t, p] = q.tie > q.homeWin && q.tie > q.awayWin ? ["tie", q.tie] : q.homeWin >= q.awayWin ? [d.home, q.homeWin] : [d.away, q.awayWin];
+      return `<span title="${esc(`${d.away} ${pct(q.awayWin)}, ${d.home} ${pct(q.homeWin)}, tie ${pct(q.tie)}`)}">${esc(t)} ${pct(p)}</span>`;
+    };
+    return `<table class="box"><thead><tr><th></th>${qs.map((q) => `<th>Q${q.q}</th>`).join("")}${wentOT ? "<th>OT</th>" : ""}<th>${pre ? "Proj" : d.status === "post" ? "Final" : "Now"}</th></tr></thead>
+      <tbody>${row(d.away, "away")}${row(d.home, "home")}${odds ? `<tr class="odds"><td>Quarter favorite</td>${qs.map((q) => `<td>${fav(q)}</td>`).join("")}${wentOT ? "<td></td>" : ""}<td></td></tr>` : ""}</tbody></table>`;
+  }
+
+  // win chance: the first thing to know about a game that isn't over
+  function winBar(d) {
+    const f = d.final;
+    if (!f || d.status === "post") return "";
+    return `<div class="winp"><div class="wp" title="Win chance"><i style="width:${(f.awayWin * 100).toFixed(1)}%"></i></div>
+      <div class="wp-lbl"><span>${esc(d.away)} <b class="num">${pct(f.awayWin)}</b></span><span class="num">projected ${Math.round(f.away)}–${Math.round(f.home)}</span><span>${esc(d.home)} <b class="num">${pct(f.homeWin)}</b></span></div></div>`;
   }
 
   // a finished game against the pregame betting line: who covered, over or under
@@ -281,41 +236,28 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     return `<div class="recap">Line ${esc(fav)} −${s}: ${won}, <b>${cover}</b>${total}</div>`;
   }
 
-  // a cue when new numbers arrive: what changed flashes, and the dot in the tab bar pulses
-  const seen = new Map();
-  const restart = (el) => { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); };
-  function cue(...selectors) {
-    let changed = false;
-    for (const sel of selectors) document.querySelectorAll(sel).forEach((el, i) => {
-      const key = `${sel}|${el.dataset.key || i}`, html = el.innerHTML;
-      if (seen.has(key) && seen.get(key) !== html) { restart(el); changed = true; }
-      seen.set(key, html);
-    });
-    if (changed) restart($("beat"));
-  }
 
   let shownEvent = null;
-  function render(d) { draw(d); cue("#head .score", "#head .now", "#proj .final", "#proj .quarters > div", "#next tr", "#drive tr", "#mix", "#qbs h3", "#qbs .sub", "#qbs .theta", "#qbs tbody tr", "#lines-rows tr", "#part-now"); }
+  function render(d) { draw(d); cue("#head h1", "#head .now", "#head .wp-lbl", "#head .box tbody tr", "#next tr", "#drive tr", "#mix", "#qbs h3", "#qbs .sub", "#qbs .theta", "#qbs tbody tr", "#lines-rows tr", "#part-now"); }
 
   function draw(d) {
     if (d.event !== shownEvent) { seen.clear(); shownEvent = d.event; }  // another game: nothing to compare
     const post = d.status === "post", pre = d.status === "pre";
     document.title = pre ? `${d.away} @ ${d.home}` : `${d.away} ${d.score.away}–${d.score.home} ${d.home}`;
-    renderProj(d);
     renderLines(d);
     $("play").hidden = post || pre;  // nothing left to play; before kickoff nobody knows who receives
     $("markets").hidden = false;
     $("mkt").hidden = post;  // over: the recap, not markets
     if (post) { $("qbs").hidden = false; $("lines").hidden = true; } else showSet();
-    const side = (t, sc) => pre ? `<span>${esc(t)}</span>` : `<span${d.ball && d.ball.team === t ? ` class="has" title="${esc(t)} has the ball"` : ""}>${esc(t)} ${sc}</span>`;
+    const side = (t, sc) => `<span${!pre && !post && d.ball && d.ball.team === t ? ` class="has" title="${esc(t)} has the ball"` : ""}><span class="abbr">${esc(t)}</span>${pre ? "" : `<span>${sc}</span>`}</span>`;
     const holder = (b) => b ? `${b.team} ${b.kick ? "receives" : "ball"}` : "";
     const age = d.feedTime ? Math.round((Date.now() - Date.parse(d.feedTime)) / 1000 - ((status && status.skew) || 0)) : null;
     const spread = d.line.spread == null ? "" : `line ${d.home} ${d.line.spread > 0 ? "−" + d.line.spread : "+" + Math.abs(d.line.spread)} · total ${d.line.total}`;
-    $("head").innerHTML = `<div class="score"><span class="teams">${side(d.away, d.score.away)} – ${side(d.home, d.score.home)}</span>
-        <span class="meta">${esc(d.detail)}</span><span class="meta">${esc(spread)}</span>
-</div>
+    $("head").innerHTML = `<div class="board"><h1>${side(d.away, d.score.away)}${side(d.home, d.score.home)}</h1>
+        <span class="meta">${esc(when(d))}</span><span class="meta">${esc(spread)}</span></div>
       ${post || pre ? "" : `<div class="now">${d.ball ? `<span class="pill">${esc(d.ball.team)} ${d.ball.kick ? "receives" : "ball"}</span> ${esc(d.ball.kick ? "Kickoff next" : d.ball.situation)}` : esc(d.now)}</div>
-      ${d.lastPlay ? `<div class="muted">Last play: ${esc(d.lastPlay)}${age != null ? ` · ${ago(age)} ago` : ""}</div>` : ""}`}`;
+      ${d.lastPlay ? `<div class="muted">Last play: ${esc(d.lastPlay)}${age != null ? ` · ${ago(age)} ago` : ""}</div>` : ""}`}
+      ${post ? recap(d) : winBar(d)}${boxScore(d)}`;
     {
     const max = Math.max(...d.next.map((x) => x.prob), 0.01);
     $("next").innerHTML = d.next.map((x) => {
@@ -335,7 +277,7 @@ footer { color: var(--ink-3); font-size: 12.5px; }
         <td class="r num muted">${Math.round(x.plays)}</td><td class="r num muted">${esc(x.time)}</td></tr>`).join("") +
       `<tr><td class="r num muted">${pct(Math.max(0, 1 - dv.outcomes.reduce((a, x) => a + x.prob, 0)), 1)}</td><td></td><td class="muted" colspan="3">every other outcome</td></tr>`
       : `<tr><td class="muted" colspan="5">No drive in progress.</td></tr>`;
-    $("mix").innerHTML = `<span class="muted">Next play:</span>` + d.mix.map((m) => `<span class="badge">${esc(m.event)} ${pct(m.prob)}</span>`).join("");
+    $("mix").textContent = "Next play: " + d.mix.map((m) => `${m.event} ${pct(m.prob)}`).join(", ");
     }
     $("qbs").innerHTML = d.qbs.map((q) => `<section class="panel qb">
         <h3>${esc(q.qb || q.team)} <span class="muted">${esc(q.team)}</span> ${q.out ? `<span class="badge warn">${post ? "replaced" : "may be out"}</span>` : ""}</h3>
@@ -354,24 +296,8 @@ footer { color: var(--ink-3); font-size: 12.5px; }
   }
 
   // Kalshi's market for this QB (same team, same last name), if it lists one
-  const nameKey = (n) => String(n || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/\b(jr|sr|ii|iii|iv)\b\.?/g, "").replace(/[^a-z ]/g, " ").trim().split(/\s+/).pop();
   const market = (d, q) => (((prices || {})[d.event] || {})[q.team] || []).find((m) => nameKey(m.qb) === nameKey(q.qb));
-  const cents = (x) => x == null ? "—" : `${Math.round(x * 100)}¢`;
 
-  // the viewer's watch list, kept in this browser only (the Watch list page reads it): [{t: ticker, ev, type, ...}]
-  const WATCH_KEY = "nflsim:watch";
-  const watchStore = {
-    all() { try { return JSON.parse(localStorage.getItem(WATCH_KEY)) || []; } catch { return []; } },
-    save(list) { try { localStorage.setItem(WATCH_KEY, JSON.stringify(list)); } catch {} },
-    has(t) { return this.all().some((e) => e.t === t); },
-    toggle(entry) {
-      const list = this.all(), i = list.findIndex((e) => e.t === entry.t);
-      if (i >= 0) list.splice(i, 1); else list.push({ side: "yes", ...entry, n: null, paid: null, added: Date.now() });
-      this.save(list);
-    },
-  };
-  const watchButton = (entry) => entry.t ? `<button type="button" class="watch" data-entry="${esc(JSON.stringify(entry))}" aria-pressed="${watchStore.has(entry.t)}">${watchStore.has(entry.t) ? "Watching" : "Watch"}</button>` : "";
   document.addEventListener("click", (e) => {
     const b = e.target.closest("button.watch");
     if (!b) return;
@@ -397,10 +323,14 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     return `<div class="theta muted">${left}</div>${next}`;
   }
 
+  const rangeLine = (lo, hi) => lo == null ? "" : `<span class="range" style="left:${(lo * 100).toFixed(1)}%;width:${((hi - lo) * 100).toFixed(1)}%"></span>`;
+
   function qbLines(d, q) {
     const m = market(d, q);
-    const lines = q.lines.filter((l) => (l.line >= 150 && l.line <= 350) || (m && m.lines[l.line]));
-    if (!lines.length) return "";
+    // lines still in play: not ones already cleared, nor ones nobody gives a chance
+    const lines = q.lines.filter((l) => ((l.line >= 150 && l.line <= 350) || (m && m.lines[l.line])) && q.yds < l.line
+      && (l.p >= 0.005 || (m && m.lines[l.line] && m.lines[l.line].ask > 0.02)));
+    if (!lines.length) return `<div class="muted">Every line is decided.</div>`;
     const price = (l) => {
       const k = m && m.lines[l.line];
       if (!k) return "";
@@ -409,45 +339,19 @@ footer { color: var(--ink-3); font-size: 12.5px; }
         { t: k.ticker, ev: d.event, type: "yards", team: q.team, qb: q.qb, line: l.line })}`;
     };
     const spread = (l) => l.lo == null ? "" : `${l.line}+: ${pct(l.p)}, likely range ${pct(l.lo)}–${pct(l.hi)}`;
-    const dots = (l) => l.lo == null ? "" : [l.lo, l.hi].map((x) => `<span class="rng" style="left:${(x * 100).toFixed(1)}%"></span>`).join("");
+    const dots = (l) => rangeLine(l.lo, l.hi);
     const tick = (l) => {
       const k = m && m.lines[l.line];
       return k && k.ask != null ? `<b class="ask" style="left:${(k.ask * 100).toFixed(1)}%" title="Kalshi ask ${cents(k.ask)} · model ${pct(l.p)}"></b>` : "";
     };
     return `<table><thead><tr><th>Line</th><th class="r">Chance</th>${m ? `<th class="r" title="Kalshi yes price (ask), before fees">Kalshi</th>` : ""}<th></th></tr></thead><tbody>
         ${lines.map((l) => `<tr data-key="${esc(q.team)}-${l.line}"><td class="num">${l.line}+</td><td class="r num">${pct(l.p)}</td>${m ? `<td class="r num">${price(l)}</td>` : ""}<td style="width:${m ? 45 : 55}%"><div class="bar" title="${esc(spread(l))}"><i style="width:${(l.p * 100).toFixed(1)}%"></i>${dots(l)}${tick(l)}</div></td></tr>`).join("")}
-        </tbody></table><div class="muted" style="font-size:12px;margin-top:4px"><span class="rng-key"></span><span class="rng-key"></span>likely range of the chance${m ? ` · <span class="mark-key"></span>Kalshi ask: bar past the mark = the model rates it above the price` : ""}</div>`;
+        </tbody></table><div class="muted" style="font-size:12px;margin-top:4px"><span class="range-key"></span>likely range of the chance${m ? ` · <span class="mark-key"></span>Kalshi ask: bar past the mark = the model rates it above the price` : ""}</div>`;
   }
 
   // Kalshi's score markets (game, halves, quarters) beside the model's chance, from its simulated points (d.scores)
   const PARTS = { game: "Game", "1H": "1st half", "2H": "2nd half", "1Q": "Q1", "2Q": "Q2", "3Q": "Q3", "4Q": "Q4" };
   let part = store.get("live:part") || "game";
-  // chance of more than x: [lowest value, counts from there up, games simulated] (older states: chances, no total)
-  const above = (pmf, x) => pmf[1].reduce((s, p, i) => pmf[0] + i > x ? s + p : s, 0) / (pmf[2] || 1);
-  function scoreChance(d, m, s = d.scores && d.scores[m.part]) {
-    if (!s) return null;
-    const home = m.team === d.home, tie = above(s.margin, -0.5) - above(s.margin, 0.5);
-    if (m.kind === "win") return m.team === "TIE" ? tie
-      : (home ? above(s.margin, 0.5) : 1 - above(s.margin, -0.5)) + (m.part === "game" ? tie / 2 : 0);  // a tied game pays half
-    if (m.kind === "spread") return home ? above(s.margin, m.x) : 1 - above(s.margin, -m.x);
-    if (m.kind === "total") return above(s.total, m.x);
-    return above(home ? s.home : s.away, m.x);
-  }
-  // the chance's likely range: priced with both QBs' form at its low and at its high end (spreads and winners:
-  // one QB high and the other low), as the passing-yard dots are
-  function scoreRange(d, m) {
-    const s = d.scores && d.scores[m.part];
-    if (!s || !s.margin_band) return null;
-    const at = (i) => ({ margin: s.margin_band[i], total: s.total_band[i],
-                         home: s.home_band && s.home_band[i], away: s.away_band && s.away_band[i] });
-    const a = scoreChance(d, m, at(0)), b = scoreChance(d, m, at(1));
-    return [Math.min(a, b), Math.max(a, b)];
-  }
-  const marketLabel = (m) => {
-    const n = m.x == null ? "" : Math.round(m.x + 0.5);
-    return m.kind === "win" ? (m.team === "TIE" ? "Tie" : `${m.team} wins`) : m.kind === "spread" ? `${m.team} by ${n}+`
-      : m.kind === "total" ? `${n}+ points` : `${m.team} scores ${n}+`;
-  };
 
   // the points so far in a part of the game: "Q4 so far: NE 0 – CHI 0 · total 0 · tied"
   function partNow(d, k) {
@@ -488,41 +392,51 @@ footer { color: var(--ink-3); font-size: 12.5px; }
     if (!parts.includes(part)) part = parts[0];
     $("parts").innerHTML = parts.map((k) => `<button type="button" data-part="${k}" aria-pressed="${k === part}">${PARTS[k]}</button>`).join("");
     $("part-now").innerHTML = partNow(d, part);
-    $("lines-rows").innerHTML = rows.filter((r) => r.m.part === part).map(({ m, p, r }) => {
+    const row = ({ m, p, r }) => {
       const tip = `Kalshi ${marketLabel(m)}: buy yes ${cents(m.ask)} · sell ${cents(m.bid)} · last ${cents(m.last)}`;
-      const dots = r ? r.map((x) => `<span class="rng" style="left:${(x * 100).toFixed(1)}%"></span>`).join("") : "";
       const range = r ? `${marketLabel(m)}: ${pct(p)}, likely range ${pct(r[0])}–${pct(r[1])}` : "";
       return `<tr data-key="${esc(`${m.part}-${m.kind}-${m.team}-${m.x}`)}"><td>${esc(marketLabel(m))}</td><td class="r num">${pct(p)}</td>
         <td class="r num"><a href="${esc(m.url)}" target="_blank" rel="noopener" title="${esc(tip)}">${cents(m.ask)}</a>${watchButton(
           { t: m.ticker, ev: d.event, type: "score", part: m.part, kind: m.kind, team: m.team, x: m.x, label: marketLabel(m) })}</td>
-        <td style="width:45%"><div class="bar" title="${esc(range)}"><i style="width:${(p * 100).toFixed(1)}%"></i>${dots}${m.ask == null ? "" :
+        <td style="width:45%"><div class="bar" title="${esc(range)}"><i style="width:${(p * 100).toFixed(1)}%"></i>${r ? rangeLine(r[0], r[1]) : ""}${m.ask == null ? "" :
           `<b class="ask" style="left:${(m.ask * 100).toFixed(1)}%" title="Kalshi ask ${cents(m.ask)} · model ${pct(p)}"></b>`}</div></td></tr>`;
+    };
+    // one group per kind of market; long ladders start with only the lines still in doubt
+    $("lines-rows").innerHTML = GROUPS.map(([kind, title]) => {
+      const all = rows.filter((r) => r.m.part === part && r.m.kind === kind);
+      if (!all.length) return "";
+      const near = new Set([...all].sort((a, b) => Math.abs(a.p - 0.5) - Math.abs(b.p - 0.5)).slice(0, 5));  // nearest a coin flip
+      const close = all.filter((r) => near.has(r)), fold = all.length > 6, open = !fold || shownAll.has(kind);
+      const toggle = fold ? `<button type="button" data-more="${kind}">${open ? "Show fewer" : `Show all ${all.length}`}</button>` : "";
+      return `<tr class="group"><th colspan="4">${title}${toggle}</th></tr>${(open ? all : close).map(row).join("")}`;
     }).join("");
   }
+  const GROUPS = [["win", "Winner"], ["spread", "Winning margin"], ["total", "Total points"], ["team", "Team points"]];
+  const shownAll = new Set();  // the groups showing every line
+  $("lines-rows").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-more]");
+    if (!b || !last) return;
+    const k = b.dataset.more;
+    shownAll.has(k) ? shownAll.delete(k) : shownAll.add(k);
+    renderLines(last);
+  });
   $("parts").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-part]");
     if (!b || !last) return;
     part = b.dataset.part; store.set("live:part", part); renderLines(last);
   });
 
-  function schedule() {
-    clearInterval(timer);
-    if ($("auto").checked) timer = setInterval(refresh, Number($("every").value) * 1000);
-  }
-
   $("game").addEventListener("change", () => {
     store.set("live:game", $("game").value);
     history.replaceState(null, "", "?event=" + encodeURIComponent($("game").value));
-    streamAt = 0;
     follow();
     refresh(true);
   });
-  $("now").addEventListener("click", () => refresh(true));
-  $("auto").addEventListener("change", schedule);
-  $("every").addEventListener("change", schedule);
+
+  if (window.matchMedia("(max-width: 820px)").matches) $("play").open = false;  // the markets come first on a phone
 
   (function boot() {
-    loadGames().then(() => { $("head").innerHTML = `<span class="muted">Loading…</span>`; follow(); refresh(true); schedule(); })
+    loadGames().then(() => { $("head").innerHTML = `<span class="muted">Loading…</span>`; follow(); refresh(true); setInterval(refresh, EVERY_S * 1000); })
       .catch((e) => {
         $("head").innerHTML = `<div class="err">Couldn't load this week's games: ${esc(e.message)}. Trying again.</div>`;
         setTimeout(boot, 10000);

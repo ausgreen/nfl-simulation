@@ -10,7 +10,8 @@ from pathlib import Path
 import pytest
 
 from nflsim.hosted.publish import LocalDir, S3Compatible, max_age
-from nflsim.hosted.worker import EDGES_PAGE, GAME_PAGE, PAGE, WATCH_PAGE, Worker, prices_at, read_history
+from nflsim.hosted.pages import render
+from nflsim.hosted.worker import CHART_PAGE, EDGES_PAGE, GAME_PAGE, PAGE, WATCH_PAGE, Worker, prices_at, read_history
 from nflsim.live import espn, feed
 
 SNAPSHOT = Path(__file__).parent / "fixtures" / "week5_snapshot.jsonl.gz"
@@ -93,7 +94,7 @@ def test_first_tick_publishes_page_games_state_and_status(tmp_path, model, repla
     w.start()
     assert w.tick() == 2
     site = tmp_path / "site"
-    assert (site / "index.html").read_bytes() == PAGE.read_bytes()
+    assert (site / "index.html").read_bytes() == render(PAGE).encode()
     assert {g["event"] for g in json.loads((site / "games.json").read_text())} == {PRE, POST}
     pre, post = (json.loads((site / "state" / f"{e}.json").read_text()) for e in (PRE, POST))
     assert pre["status"] == "pre" and pre["now"] == "Kickoff · LA receives" and 0 < pre["homeWin"] < 1
@@ -103,9 +104,9 @@ def test_first_tick_publishes_page_games_state_and_status(tmp_path, model, repla
     assert status["skew"] > 60  # a replay's clock runs behind the viewer's, and the pages correct for it
     cards = {c["event"]: c for c in json.loads((site / "summary.json").read_text())}
     assert cards[PRE]["homeWin"] == pre["homeWin"] and len(cards[PRE]["qbs"]) == 2 and cards[POST]["state"] == "post"
-    assert (site / "game.html").read_bytes() == GAME_PAGE.read_bytes()
-    assert (site / "edges.html").read_bytes() == EDGES_PAGE.read_bytes()
-    assert (site / "watch.html").read_bytes() == WATCH_PAGE.read_bytes()
+    assert (site / "game.html").read_bytes() == render(GAME_PAGE).encode()
+    assert (site / "edges.html").read_bytes() == render(EDGES_PAGE).encode()
+    assert (site / "watch.html").read_bytes() == render(WATCH_PAGE).encode()
 
 
 def test_unchanged_games_are_not_recomputed_or_republished(tmp_path, model, replay):
@@ -250,7 +251,7 @@ def test_cache_times(path, seconds):
 
 
 def test_pages_have_no_corrections_and_use_relative_urls():
-    home, game, edges, watch = PAGE.read_text(), GAME_PAGE.read_text(), EDGES_PAGE.read_text(), WATCH_PAGE.read_text()
+    home, game, edges, watch = (render(p) for p in (PAGE, GAME_PAGE, EDGES_PAGE, WATCH_PAGE))
     for html in (home, game, edges, watch):
         for gone in ("<form", "/api/", "overrides", "live:fix", "KALSHI_", "portfolio"):  # nothing asks for an account
             assert gone not in html
@@ -258,6 +259,14 @@ def test_pages_have_no_corrections_and_use_relative_urls():
     for used in ('getJSON("games.json")', "getJSON(`state/", 'getJSON("status.json")'):
         assert used in game
     assert 'SUMMARY = "summary.json", GAME = "game.html"' in home
+
+
+def test_published_pages_are_whole_files():
+    for page in (PAGE, GAME_PAGE, EDGES_PAGE, WATCH_PAGE, CHART_PAGE):
+        html = render(page)
+        assert "/*@" not in html and "<!--@" not in html
+        assert "const nfl =" in html and "--accent:" in html
+        assert html.count(' aria-current="page">') == 1 and html.count('class="tabs"') == 1
 
 
 def test_r2_publisher_sends_cache_headers():
@@ -409,3 +418,78 @@ def test_expectations_are_recomputed_once_just_before_a_kickoff(tmp_path, model,
         assert w._job is None and len(calls) == 1
     finally:
         model.week_preds, model.params = saved
+
+
+def test_pages_run_in_a_browser(tmp_path, model, replay):
+    """Every published page in headless Chrome: no script errors, and the main parts show up and respond (a page
+    script can break in ways only a browser sees, as moving the shared helpers once did)."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    import functools
+    import http.server
+    import threading
+
+    replay(SNAPSHOT)
+    w = _worker(tmp_path, model, [PRE, POST])
+    w.start()
+    w.tick()
+    site = tmp_path / "site"
+    # the pregame game, made a game in progress, and Kalshi prices for it (replays publish none)
+    st = json.loads((site / "state" / f"{PRE}.json").read_text())
+    st.update(status="in", detail="8:00 - 2nd", clock="Q2 8:00", score={"away": 7, "home": 3}, lastPlay="A run for 4 yards.",
+              ball={"team": st["home"], "kick": False, "situation": "2nd & 6 at LA 40"})
+    st["quarters"][0].update(state="done", home=3.0, away=7.0)
+    st["quarters"][1]["state"] = "live"
+    (site / "state" / f"{PRE}.json").write_text(json.dumps(st))
+    for name, key in (("games.json", "state"), ("summary.json", "state")):
+        rows = json.loads((site / name).read_text())
+        for g in rows:
+            if g["event"] == PRE:
+                g.update({key: "in", "detail": st["detail"], "clock": st["clock"], "awayScore": 7, "homeScore": 3,
+                          "score": st["score"], "ball": st["ball"]})
+        (site / name).write_text(json.dumps(rows))
+    q = st["qbs"][0]
+    lines = {str(ln["line"]): {"ask": round(min(max(ln["p"], 0.05), 0.95), 2), "bid": round(min(max(ln["p"] - 0.03, 0.02), 0.9), 2),
+                               "last": None, "ticker": f"T-{ln['line']}"} for ln in q["lines"]}
+    win = {"part": "game", "kind": "win", "team": st["home"], "x": None, "ask": 0.5, "bid": 0.47, "last": None,
+           "ticker": "T-WIN", "url": "https://kalshi.com"}
+    (site / "kalshi.json").write_text(json.dumps({PRE: {q["team"]: [{"qb": q["qb"], "url": "https://kalshi.com", "lines": lines}],
+                                                        "scores": [win]}}))
+
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(site))
+    handler.log_message = lambda *a: None
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_port}/"
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch(channel="chrome")
+        except Exception as e:  # no Chrome on this machine
+            pytest.skip(f"no Chrome: {e}")
+        errors = []
+        page = browser.new_page()
+        page.on("pageerror", lambda e: errors.append(f"{page.url}: {e}"))
+
+        def visit(path, ready):
+            page.goto(base + path)
+            page.wait_for_selector(ready, timeout=10000)
+
+        visit("", ".card")
+        assert page.locator(".card").count() == 2 and page.locator(".card.live").count() == 1
+        visit(f"game.html?event={PRE}", "#head .box")
+        assert "7" in page.locator("#head h1").inner_text() and page.locator("#head .wp").count() == 1
+        assert not page.locator("#play").is_hidden() and page.locator("#next tr").count() > 1
+        page.locator("button.watch").first.click()
+        assert page.evaluate("JSON.parse(localStorage.getItem('nflsim:watch')).length") == 1
+        page.click('#mkt button[data-set="scores"]')
+        assert page.locator("#lines-rows tr").count() >= 2
+        visit(f"game.html?event={POST}", "#head .recap")
+        assert page.locator("#play").is_hidden()
+        visit("edges.html", "#rows tr td")
+        page.select_option("#favor", "all")
+        assert page.locator("#rows tr").count() >= 2
+        visit("watch.html", "#rows tr td")
+        assert page.locator("#rows button.remove").count() == 1
+        visit(f"chart.html?event={PRE}", "#chart p")  # no chances recorded yet: says so
+        browser.close()
+    srv.shutdown()
+    assert errors == []

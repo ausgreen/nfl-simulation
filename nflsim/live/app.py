@@ -25,6 +25,7 @@ import os
 import threading
 import time
 import traceback
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -37,8 +38,8 @@ from ..data import Dataset, load
 from ..sim import coaches as CO, engine as E, pregame as PG, teams as TM
 from . import espn
 
-TEMPLATE = Path(__file__).with_name("live_template.html")
 HOME = Path(__file__).parent.parent / "hosted" / "index.html"  # every game at a glance
+GAME = HOME.with_name("game.html")  # one game (the hosted page, on this server's endpoints)
 EDGES = HOME.with_name("edges.html")  # the model vs Kalshi's prices, largest gaps first
 WATCH = HOME.with_name("watch.html")  # the viewer's watched lines and positions (kept in their browser)
 CHART = HOME.with_name("chart.html")  # a game's chances over time (from the states and prices this server sees)
@@ -523,7 +524,9 @@ def _write_parquet(df: pd.DataFrame, path: Path) -> None:
 
 def _local(page: Path) -> bytes:
     """A hosted page (hosted/*.html) pointed at this server's endpoints and paths instead of the published files."""
-    html = page.read_text()
+    from ..hosted.pages import render
+
+    html = render(page)
     for published, here in (("summary.json", "/api/summary"), ("kalshi.json", "/api/kalshi"), ("game.html", "/game"),
                             ("edges.html", "/edges"), ("watch.html", "/watch"), ("chart.html", "/chart"),
                             ("./", "/")):
@@ -540,6 +543,7 @@ def _f(v):
 
 
 def serve(port: int = 8765, ds: Dataset | None = None, feed: str = "kalshi") -> None:
+    states: dict[str, dict] = {}  # each game's latest state, until its play changes
     model = LiveModel(ds or load(), feed=feed)
     from .. import kalshi_ws
 
@@ -573,7 +577,7 @@ def serve(port: int = 8765, ds: Dataset | None = None, feed: str = "kalshi") -> 
                 elif u.path == "/edges":
                     self._send(200, _local(EDGES), "text/html; charset=utf-8")
                 elif u.path == "/game":
-                    self._send(200, _local(TEMPLATE), "text/html; charset=utf-8")
+                    self._send(200, _local(GAME), "text/html; charset=utf-8")
                 elif u.path == "/watch":
                     self._send(200, _local(WATCH), "text/html; charset=utf-8")
                 elif u.path == "/chart":
@@ -607,11 +611,16 @@ def serve(port: int = 8765, ds: Dataset | None = None, feed: str = "kalshi") -> 
                         prices.update(at=time.monotonic(), data=source(espn.games()))
                         series.add_prices(time.time(), prices["data"])
                     self._send(200, prices["data"])
-                elif u.path == "/api/sig":
-                    if not q.get("event"):
-                        return self._send(400, {"error": "event required"})
-                    s = model.game_state(q["event"])  # scoreboard + summary: the box score can lag a play
-                    self._send(200, {"sig": sig_id(s), "status": s["status"]})
+                elif u.path.startswith("/state/") and u.path.endswith(".json"):
+                    ev = u.path[len("/state/"):-len(".json")]
+                    s = model.game_state(ev)  # scoreboard + summary: a cheap check; simulate only when the play changed
+                    out = states.get(ev)
+                    if out is None or out["sig"] != sig_id(s):
+                        out = states[ev] = model.compute(ev, {})
+                        card(next((g for g in espn.games() if g["event"] == ev), {"event": ev}), out)
+                    self._send(200, out)
+                elif u.path == "/status.json":  # answering at all means the server is up
+                    self._send(200, {"updated": datetime.now(timezone.utc).isoformat(), "every": 10})
                 else:
                     self._send(404, {"error": "not found"})
             except Exception as e:  # report to the page instead of dropping the connection
