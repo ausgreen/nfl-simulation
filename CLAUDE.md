@@ -90,7 +90,8 @@ calibration) -> vectorized simulation from any game state -> CLI replay or live 
   `push.py`: with `--serve PORT`, `Hub` streams every published JSON file to open pages (Server-Sent Events,
   `/events?only=...`; with `--publish local` it serves the pages too); the pages poll only while no stream is up,
   so on R2 (no route to the worker yet) they poll as before.
-  No viewer input reaches the worker. Every published price and state change is also appended to
+  No viewer input reaches the worker. Every published price and state change of a game in progress (or from 15 minutes
+  before its kickoff, and its final card) is also appended to
   `data/live/history/<UTC date>.jsonl.gz` (`Worker.history`, `read_history`; price records after a file's first list
   only the games that changed, `prices_at` fills them in; not in replays) for grading the model vs Kalshi.
 

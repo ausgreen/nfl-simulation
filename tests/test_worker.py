@@ -12,6 +12,7 @@ import pytest
 from nflsim.hosted.publish import LocalDir, S3Compatible, max_age
 from nflsim.hosted.pages import render
 from nflsim.hosted.worker import CHART_PAGE, EDGES_PAGE, GAME_PAGE, PAGE, WATCH_PAGE, Worker, prices_at, read_history
+from nflsim.hosted import worker
 from nflsim.live import espn, feed
 
 SNAPSHOT = Path(__file__).parent / "fixtures" / "week5_snapshot.jsonl.gz"
@@ -126,6 +127,7 @@ def test_prices_are_published_when_they_change(tmp_path, model, replay):
     quotes = [{"1": {"LA": []}, "2": {"KC": []}}, {"1": {"LA": []}, "2": {"KC": []}}, stafford, {"1": stafford["1"]}]
     w = _worker(tmp_path, model, [POST])
     w.prices, w.prices_every, w.history = lambda games: quotes.pop(0), 0.0, tmp_path / "history"
+    w._logs = lambda g, now: True  # here: every game's prices (test_history_only_around_games has the window)
     w.start()
     for _ in range(4):
         w.tick()
@@ -139,6 +141,30 @@ def test_prices_are_published_when_they_change(tmp_path, model, replay):
     state = [r for r in recs if r["kind"] == "state"]
     assert len(state) == 1 and state[0]["card"]["event"] == POST and state[0]["card"]["qbs"]
     assert json.loads((tmp_path / "site" / "kalshi.json").read_text()) == {"1": stafford["1"]}
+
+
+def test_history_only_around_games(tmp_path, model, replay):
+    """The history has a game from `history_before` before kickoff, while in progress, and its final card (8 hours)."""
+    replay(SNAPSHOT)  # BUF @ LA starts 7.8 h after the snapshot; TB @ DAL ended 3.5 days before it
+    n = iter(range(100))
+    w = _worker(tmp_path, model, [PRE, POST])
+    w.prices, w.prices_every, w.history = (lambda games: {PRE: {"LA": [next(n)]}, POST: {"DAL": [next(n)]}}), 0.0, tmp_path / "history"
+    w.start()
+    w.tick()
+    assert not (tmp_path / "history").exists()  # neither game is in its window: nothing logged
+    w.history_before = 8 * 3600  # BUF @ LA now is
+    w.tick()
+    (day,) = (tmp_path / "history").iterdir()
+    recs = read_history(day)
+    assert {ev for r in recs if r["kind"] == "kalshi" for ev in r["prices"]} == {PRE}
+    assert [r["card"]["event"] for r in recs if r["kind"] == "state"] == [PRE]  # its state once, on entering the window
+    games = {g["event"]: g for g in w._games(espn.scoreboard())}
+    kick = worker._kickoff(games[PRE])
+    w.history_before = 900.0
+    g = dict(games[PRE])
+    assert w._logs({**g, "state": "pre"}, kick - 600) and not w._logs({**g, "state": "pre"}, kick - 1200)
+    assert w._logs({**g, "state": "in"}, kick + 3600)
+    assert w._logs({**g, "state": "post"}, kick + 4 * 3600) and not w._logs({**g, "state": "post"}, kick + 9 * 3600)
 
 
 def _with_passing(summary, team, name, espn_id, comp_att, yds):

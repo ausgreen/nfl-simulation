@@ -84,8 +84,8 @@ class Series:
                     for line, q in (m.get("lines") or {}).items():
                         self._add(g, "kalshi", f"qb:{team}:{int(float(line))}", t, _mid(q))
 
-    def from_history(self, records: list[dict]) -> None:
-        """Replay a worker history file's records (worker.read_history), oldest first."""
+    def from_history(self, records) -> None:
+        """Replay a worker history file's records (worker.iter_history or read_history), oldest first."""
         for r in records:
             if r["kind"] == "state":
                 self.add_state(r["t"], r["card"])

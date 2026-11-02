@@ -24,8 +24,9 @@ change. Errors in one game are logged and reported in status.json; they don't st
 retried after `retry` seconds (a failing upstream, e.g. Open-Meteo for the week's predictions, isn't hammered).
 With no game in progress or starting within `soon` seconds, the scoreboard is polled every `idle_every` seconds.
 
-With `history` (a directory), every change is also appended to <history>/<UTC date>.jsonl.gz, one JSON record per
-line: {"t", "kind": "kalshi", "prices"} (kalshi.json) or {"t", "kind": "state", "card"} (the game's summary card:
+With `history` (a directory), every change of a game in progress, or from `history_before` seconds (15 min) before
+its kickoff (its current state is logged when it enters that window), and its final card, is also appended to
+<history>/<UTC date>.jsonl.gz, one JSON record per line: {"t", "kind": "kalshi", "prices"} (kalshi.json) or {"t", "kind": "state", "card"} (the game's summary card:
 clock, score, win chance, each QB's yards and line chances, the score distributions). A file's first "kalshi" record
 has every game's prices; later ones (with "partial": true) only the games whose prices changed, and "gone": the games
 no longer listed. `read_history` reads them back; `prices_at` replays the "kalshi" records into whole snapshots.
@@ -95,6 +96,8 @@ class Worker:
     only: set[str] | None = None  # restrict to these events (tests)
     prices: Callable[[list], dict] | None = None  # games -> market prices (kalshi.live_prices)
     history: Path | None = None  # where to append every published change (None: nowhere)
+    history_before: float = 900.0  # ... for games in progress, and from this long before kickoff (and the final card)
+    _windowed: set = field(default_factory=set)  # games whose state is in the history since they entered its window
     prices_every: float = 0.0  # 0: every tick, as often as the scoreboard is read
     priced: float | None = None  # wall clock of the last price fetch
     _logged: tuple[str, dict] | None = None  # (history file, prices) of the last "kalshi" record
@@ -154,15 +157,28 @@ class Worker:
         with gzip.open(path, "at") as f:
             f.write(line + "\n")
 
+    def _logs(self, g: dict, now: float) -> bool:
+        """Whether a game's changes go to the history: in progress, from `history_before` seconds before kickoff, and
+        its final card (a game that ended in the last 8 hours). The rest of the day only made the files large."""
+        if g["state"] == "in":
+            return True
+        if g["state"] == "pre":
+            return _kickoff(g) - now <= self.history_before
+        return now - _kickoff(g) <= 8 * 3600
+
     def _record_prices(self, t: float, quotes: dict) -> None:
         """A "kalshi" record: every game's prices in a file's first one, after that only the games that changed."""
         day = f"{datetime.fromtimestamp(t, timezone.utc):%Y-%m-%d}"
         if self._logged is None or self._logged[0] != day:
+            if not quotes:  # no game in its logging window yet: the day's first record waits for one
+                return
             self.record("kalshi", t, prices=quotes)
         else:
             last = self._logged[1]
             changed = {ev: v for ev, v in quotes.items() if last.get(ev) != v}
             gone = sorted(ev for ev in last if ev not in quotes)
+            if not changed and not gone:
+                return
             self.record("kalshi", t, prices=changed, partial=True, **({"gone": gone} if gone else {}))
         self._logged = (day, json.loads(json.dumps(quotes, default=_f)))
 
@@ -181,7 +197,7 @@ class Worker:
                 path = Path(self.history) / f"{day:%Y-%m-%d}.jsonl.gz"
                 if path.exists():
                     try:
-                        self.series.from_history(read_history(path))
+                        self.series.from_history(iter_history(path))
                     except Exception as e:  # a damaged file: the series start over
                         self.log(f"series: {path.name}: {type(e).__name__}: {e}")
         sb = espn.scoreboard()
@@ -391,17 +407,26 @@ class Worker:
             wrote = self.put_json(f"state/{g['event']}.json", out)
             if wrote:
                 card = summary(out, g)
-                self.record("state", now, card=card)
+                if self._logs(g, now):
+                    self.record("state", now, card=card)
+                    self._windowed.add(g["event"])
                 self.series.add_state(now, card)
                 self._series_at.pop(g["event"], None)  # a new state: publish the series now
             self.log(f"{g['away']} @ {g['home']} {out['clock']}: {out['now']} ({secs:.1f} s{'' if wrote else ', unchanged'})")
+        if self.history is not None:  # a game entering its window: its current state, though unchanged
+            for g in games:
+                t = self.games.get(g["event"])
+                if g["event"] not in self._windowed and t is not None and t.out is not None and self._logs(g, now):
+                    self.record("state", now, card=summary(t.out, g))
+                    self._windowed.add(g["event"])
         self.put_json("summary.json", [summary(self.games[g["event"]].out, g) for g in games])
         if self.prices and (self.priced is None or time.monotonic() - self.priced >= self.prices_every):
             self.priced = time.monotonic()
             try:
                 quotes = self.prices(games)
                 if self.put_json("kalshi.json", quotes):
-                    self._record_prices(now, quotes)
+                    skip = {g["event"] for g in games if not self._logs(g, now)}
+                    self._record_prices(now, {ev: v for ev, v in quotes.items() if ev not in skip})
                     self.series.add_prices(now, quotes)
             except Exception as e:  # the page keeps the last prices
                 self.log(f"prices: {type(e).__name__}: {e}")
@@ -521,10 +546,18 @@ def _kickoff(g: dict) -> float:
         return float("inf")
 
 
+def iter_history(path: Path | str):
+    """The records of one history file (Worker.history), oldest first, one at a time: a Sunday's file is ~130 MB
+    compressed and several GB as Python objects, more than the server's memory."""
+    with gzip.open(path, "rt") as f:
+        for line in f:
+            if line.strip():
+                yield json.loads(line)
+
+
 def read_history(path: Path | str) -> list[dict]:
     """The records of one history file (Worker.history), oldest first."""
-    with gzip.open(path, "rt") as f:
-        return [json.loads(line) for line in f if line.strip()]
+    return list(iter_history(path))
 
 
 def prices_at(records: list[dict]):
