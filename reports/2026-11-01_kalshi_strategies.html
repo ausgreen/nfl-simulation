@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kalshi Betting Strategies</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a66; --line: #e4e1da;
+    --good: #1f7a4d; --bad: #b3361f; --warn: #9a6b00; --accent: #2a5db0; --chip: #f1eee7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161614; --panel: #1f1f1c; --ink: #ecebe6; --muted: #a09e97; --line: #34332f;
+      --good: #5fc28f; --bad: #ef8a73; --warn: #e2b54a; --accent: #8fb3f0; --chip: #2a2a26;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 32px 16px 80px; }
+  h1 { font-size: 30px; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 21px; margin: 44px 0 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+  h3 { font-size: 17px; margin: 26px 0 8px; }
+  p, li { max-width: 74ch; }
+  .sub { color: var(--muted); margin: 0 0 22px; }
+  .callout { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: 8px; padding: 14px 16px; margin: 18px 0; }
+  .callout.good { border-left-color: var(--good); }
+  .callout.bad { border-left-color: var(--bad); }
+  .wrap { overflow-x: auto; margin: 10px 0 18px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; color: var(--muted); font-size: 12.5px; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pos { color: var(--good); } .neg { color: var(--bad); }
+  .chip { display: inline-block; padding: 1px 8px; border-radius: 99px; background: var(--chip); font-size: 12.5px; white-space: nowrap; }
+  .chip.g { color: var(--good); } .chip.b { color: var(--bad); } .chip.w { color: var(--warn); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin: 16px 0; }
+  .card h3 { margin-top: 0; }
+  ol.steps li { margin: 6px 0; }
+  code { background: var(--chip); padding: 1px 5px; border-radius: 4px; font-size: 13.5px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 700px) { .grid2 { grid-template-columns: 1fr; } h1 { font-size: 25px; } }
+  .kv { font-size: 14px; } .kv b { display: inline-block; min-width: 120px; color: var(--muted); font-weight: 600; }
+  footer { color: var(--muted); font-size: 13px; margin-top: 50px; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Kalshi betting strategies from the model</h1>
+<p class="sub">Backtest on the 12 games of Sunday, Nov 1, 2026 (Kalshi live data feed and WebSocket prices). Written Nov 2. CHI @ SEA (Monday night) will be the first game the rules have never seen.</p>
+
+<div class="callout bad">
+  <b>Bottom line.</b> All five rules made money on Nov 1, but they were picked as the best of 89,566 rules tried on the same day, and each rests on only 5–13 independent results. None has been shown to have an edge. Two (2 and 5) are worth paper-trading. Three (1, 3 and 4) mostly reflect Sunday's results and should not be bet.
+</div>
+
+<h2>1. What was tested</h2>
+<ul>
+  <li><b>Data:</b> the hosted worker's history log for every Kalshi price change (bid and ask) and every model update, on a 5-second grid, from 14 hours before kickoff to the final whistle.</li>
+  <li><b>Fills:</b> each bet buys at the ask (a NO costs 1 − the YES bid) <b>5 seconds after the signal</b>, plus Kalshi's taker fee (7% × price × (1 − price), rounded up to the cent). The log has prices but not order-book size, so fills may be optimistic.</li>
+  <li><b>Exit:</b> hold to settlement. An early-exit version (sell once the model no longer sees value) lost most or all of the profit in every rule.</li>
+  <li><b>Filters on every signal:</b> spread of 10¢ or less; price between 3¢ and 97¢; model chance not 0 or 1; model numbers less than 90 s old (except at halftime); one bet per market per rule.</li>
+  <li><b>Settlement:</b> from the final score and passing yards. Of 2,847 markets, the last tight Kalshi quote disagreed with that in only 19, all late swings.</li>
+</ul>
+
+<h3>The context: in-game, the model is usually behind the market</h3>
+<p>When the model's chance jumped 4+ points and the market agreed, Kalshi got there first about 75% of the time, typically <b>45 s earlier</b>, and on big plays (over 20 points) 91% of the time. Gaps of 5¢ or more mostly closed by the model catching up, not the market. Simply buying whatever the model likes during games lost 3–27% after fees, and buying against it lost up to 12% in most phases. Pregame is the one place the model was about as accurate as Kalshi (0.1678 vs 0.1687 Brier score).</p>
+
+<h2>2. The five strategies</h2>
+<p>"With the model" = buy the side the model thinks is cheap. "Against the model" = buy the side the model thinks is <i>overpriced</i>. "Independent outcomes" groups bets that settle together (several lines on one QB, several spreads on one game's 2nd half). "No model" = buy the same side in the same markets, phase and price range at the first quote, ignoring the model.</p>
+<div class="wrap"><table>
+<thead><tr><th>#</th><th>Rule</th><th class="n">Bets</th><th class="n">Indep. outcomes</th><th class="n">Staked</th><th class="n">P/L</th><th class="n">Return</th><th class="n">No model</th><th class="n">Nearby settings +</th><th>Verdict</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>YES on quarter/half markets at 25–50¢, <b>against</b> the model by 15¢+, Q3, price flat for 60 s</td><td class="n">28</td><td class="n">9 in 5 games</td><td class="n">$12.14</td><td class="n pos">+$11.86</td><td class="n pos">+98%</td><td class="n">+5%</td><td class="n">12/14</td><td><span class="chip b">don't bet</span></td></tr>
+<tr><td>2</td><td>NO on QB yards under 50¢, <b>with</b> the model by 3¢+, pregame, price flat for 60 s</td><td class="n">26</td><td class="n">10 QBs, 7 games</td><td class="n">$7.59</td><td class="n pos">+$10.41</td><td class="n pos">+137%</td><td class="n">+31%</td><td class="n">8/9</td><td><span class="chip w">paper-trade</span></td></tr>
+<tr><td>3</td><td>NO on game totals at 50–75¢, <b>against</b> the model by 3¢+, Q1, price flat for 60 s</td><td class="n">20</td><td class="n">5 games</td><td class="n">$12.57</td><td class="n pos">+$7.43</td><td class="n pos">+59%</td><td class="n">+1%</td><td class="n">8/12</td><td><span class="chip b">don't bet</span></td></tr>
+<tr><td>4</td><td>YES on game spreads at 50¢+, <b>against</b> the model by 15¢+, Q2, just after the model dropped 2¢+</td><td class="n">20</td><td class="n">6 games</td><td class="n">$12.42</td><td class="n pos">+$6.58</td><td class="n pos">+53%</td><td class="n">+10%</td><td class="n">14/14</td><td><span class="chip b">don't bet</span></td></tr>
+<tr><td>5</td><td>YES on quarter/half spreads at 50–75¢, <b>with</b> the model by 10¢+, 2nd half, just after the model rose 2¢+</td><td class="n">20</td><td class="n">13 in 8 games</td><td class="n">$11.85</td><td class="n pos">+$7.15</td><td class="n pos">+60%</td><td class="n">+11%</td><td class="n">12/15</td><td><span class="chip w">paper-trade</span></td></tr>
+</tbody></table></div>
+<p>Stakes are one contract per bet. The bootstrap over games gave every rule a 100% chance of profit. Treat that as a symptom of too few games, not as confidence: when every bet in a game wins together, resampling games can't produce a loss.</p>
+
+<h3>Strategy 1 — don't bet</h3>
+<p>Most bets were YES on the 2nd-half or Q4 spread of the team leading at halftime (BUF 11 bets, NE 7, LV 5, DAL 3). Kalshi priced these at 35–49¢ against the model's 20–30%, and the leaders covered. The rule falls apart with small changes: Q2 instead of Q3 returns −73%, and a 3¢ gap instead of 15¢ returns +6%.</p>
+
+<h3>Strategy 2 — paper-trade</h3>
+<p>Buying every cheap QB NO before kickoff with no model returned +31%: unders hit on Sunday. The model's filter raised that to +137%, and the opposite side (YES) lost 25%. Seven of the 10 QBs made money; Burrow (−$0.77), Willis (−$0.58) and Cam Ward (−$0.14) lost. Profit was spread across games (the best game was 39% of it).</p>
+
+<h3>Strategy 3 — don't bet</h3>
+<p>Five games (BAL @ BUF, ATL @ TB, NE @ MIA, MIN @ DET, LAC @ LA) all stayed under their totals, so it won all 20 bets. With the "price flat" condition removed it returns +2%; requiring that the model just moved gives −5%. The no-model baseline is +1%.</p>
+
+<h3>Strategy 4 — don't bet</h3>
+<p>These are YES bets on the leading team's game spread (BUF, CIN, JAX, DET, NE, LA) when the model said they were overpriced. Every nearby setting made money, <i>including buying the other side</i> (+3%). That points to Sunday's leaders pulling away, not to anything the model knows.</p>
+
+<h3>Strategy 5 — paper-trade</h3>
+<p>The strongest of the five. It's spread over the most outcomes (13 quarter/half markets in 8 games, 12 profitable), no game supplied more than 24% of the profit, and it makes sense: buy right after the model moves up and is well above the price. The opposite side lost 41%, and the same rule on full-game spreads lost 28%. Still only about 13 outcomes.</p>
+
+<h2>3. Strategy 2: does the entry time matter?</h2>
+<p>In the first backtest, half of strategy 2's bets fired 165–170 minutes before kickoff. That was an artifact of the set-up: the backtest only looked at the last 3 hours before kickoff, so the rule fired as soon as that window opened. The logs go back about 14 hours, so I re-ran it at fixed entry times.</p>
+
+<div class="wrap"><table>
+<thead><tr><th class="n">Buy at</th><th class="n">Bets</th><th class="n">QBs</th><th class="n">Games</th><th class="n">Return</th><th class="n">No-model return</th><th class="n">Avg CLV</th><th class="n">Beat close</th></tr></thead>
+<tbody>
+<tr><td class="n">12 h before</td><td class="n">14</td><td class="n">6</td><td class="n">5</td><td class="n pos">+155%</td><td class="n">+31%</td><td class="n pos">+1.5¢</td><td class="n">71%</td></tr>
+<tr><td class="n">8 h</td><td class="n">13</td><td class="n">6</td><td class="n">5</td><td class="n pos">+164%</td><td class="n">+26%</td><td class="n pos">+0.8¢</td><td class="n">77%</td></tr>
+<tr><td class="n">6 h</td><td class="n">8</td><td class="n">3</td><td class="n">3</td><td class="n pos">+195%</td><td class="n">+22%</td><td class="n">+0.1¢</td><td class="n">50%</td></tr>
+<tr><td class="n">4 h</td><td class="n">11</td><td class="n">4</td><td class="n">4</td><td class="n pos">+188%</td><td class="n">+22%</td><td class="n">+0.1¢</td><td class="n">64%</td></tr>
+<tr><td class="n">3 h</td><td class="n">18</td><td class="n">8</td><td class="n">6</td><td class="n pos">+107%</td><td class="n">+22%</td><td class="n pos">+0.9¢</td><td class="n">67%</td></tr>
+<tr><td class="n">2 h</td><td class="n">16</td><td class="n">7</td><td class="n">5</td><td class="n pos">+108%</td><td class="n">+21%</td><td class="n pos">+0.7¢</td><td class="n">56%</td></tr>
+<tr><td class="n">1 h</td><td class="n">13</td><td class="n">7</td><td class="n">6</td><td class="n pos">+150%</td><td class="n">+16%</td><td class="n">+0.3¢</td><td class="n">46%</td></tr>
+<tr><td class="n">30 min</td><td class="n">12</td><td class="n">7</td><td class="n">6</td><td class="n pos">+167%</td><td class="n">+18%</td><td class="n pos">+0.7¢</td><td class="n">50%</td></tr>
+<tr><td class="n">15 min</td><td class="n">11</td><td class="n">6</td><td class="n">5</td><td class="n pos">+180%</td><td class="n">+17%</td><td class="n">+0.2¢</td><td class="n">27%</td></tr>
+<tr><td class="n">2 min</td><td class="n">16</td><td class="n">8</td><td class="n">5</td><td class="n pos">+137%</td><td class="n">+20%</td><td class="n neg">−0.3¢</td><td class="n">6%</td></tr>
+</tbody></table></div>
+<p>CLV (closing-line value) = the NO's mid-price at the last quote before kickoff minus what you paid. It doesn't depend on the game's result, so it's a better sign of skill than profit on 12 games.</p>
+<ul>
+  <li><b>The returns vary a lot (+107% to +195%, the 6 h row included), but not because of timing.</b> The bets are small and cheap (about 28¢ each) and pay $1, so the return depends on which 3–8 QBs happen to qualify at that moment. At 6 hours only 3 QBs qualified ($2.71 staked, +$5.29: all three hit). At 3 hours 8 QBs qualified, including two losers, Burrow and Willis ($5.31 staked, +$5.69). The dollar profit was $4.80–$6.90 at every time. One QB more or less swings the return by 30–80 points.</li>
+  <li><b>The part that timing actually controls is the price, and that effect is small.</b> Average closing-line value differed by at most about 1.5¢ per bet between entry times. On a 28¢ bet that is about 5 points of return. Everything else in the range is which QBs were in the sample. The rule beat the no-model baseline at every time, and taking the first or last signal in windows from 14 hours to 10 minutes gave +118% to +167%.</li>
+  <li><b>The same handful of unders</b> (Prescott, Brissett, Penix, Lamar, Rodgers) carry it whenever you buy.</li>
+  <li><b>Earlier entries got slightly better prices.</b> Bets placed 2–12 hours out averaged +0.7¢ to +1.5¢ CLV and beat the closing price 56–77% of the time. Buying in the last 15 minutes gave about zero. Where the model saw 3¢+ of value 3 hours out, the NO price rose 1.9¢ by kickoff on average (18 lines), against −0.4¢ elsewhere (65 lines). It's a weak sign the market drifts toward the model before kickoff, but a cent or two on 18 lines could easily be noise.</li>
+  <li><b>Late model changes add bets.</b> The model re-ran about every hour before kickoff. In ARI @ DAL its NO chance on Prescott rose from 21% to 36% in the last 3 hours while Kalshi stayed at 25¢, which is why six of that game's bets fired 6 minutes before kickoff. All six won.</li>
+</ul>
+<div class="callout good"><b>Practical answer:</b> buy when you first see the signal, any time in the 12 hours before kickoff, and check again about 30 minutes before kickoff for lines the latest model run added. Waiting until the last few minutes gave no better prices.</div>
+
+<h2>3b. Could these results be luck?</h2>
+<p><b>Yes, very plausibly.</b> Two tests:</p>
+<p><b>Each rule on its own.</b> Assume Kalshi's mid price at the time of each bet was the true chance (no edge), with bets that settle together (one QB's lines, one game part's spreads) sharing one random draw. Simulated 200,000 times:</p>
+<div class="wrap"><table>
+<thead><tr><th>#</th><th class="n">Independent outcomes</th><th class="n">Expected P/L, no edge</th><th class="n">Actual P/L</th><th class="n">Chance by luck</th></tr></thead>
+<tbody>
+<tr><td>1</td><td class="n">13</td><td class="n">−$1.08</td><td class="n pos">+$11.86</td><td class="n">1 in 420</td></tr>
+<tr><td>2</td><td class="n">10</td><td class="n">−$0.63</td><td class="n pos">+$10.41</td><td class="n">1 in 600</td></tr>
+<tr><td>3</td><td class="n">5</td><td class="n">−$0.56</td><td class="n pos">+$7.43</td><td class="n">1 in 24</td></tr>
+<tr><td>4</td><td class="n">6</td><td class="n">−$0.60</td><td class="n pos">+$6.58</td><td class="n">1 in 16</td></tr>
+<tr><td>5</td><td class="n">13</td><td class="n">−$0.77</td><td class="n pos">+$7.15</td><td class="n">1 in 440</td></tr>
+</tbody></table></div>
+<p>Those odds would be convincing for a rule chosen <i>before</i> the games. These five were chosen <i>after</i>, as the best of 44,783 hold-to-settlement rules.</p>
+<p><b>The whole search on made-up outcomes.</b> 16 times, I replaced every game's results with random ones drawn from Kalshi's own prices (a world where the model has no edge at all) and re-ran the entire search with the same filters:</p>
+<div class="wrap"><table>
+<thead><tr><th>Measure</th><th class="n">Real Nov 1</th><th class="n">No-edge worlds (median, range)</th><th class="n">No-edge as good or better</th></tr></thead>
+<tbody>
+<tr><td>Best rule's 5th-percentile return</td><td class="n">+60%</td><td class="n">+84% (+35% to +244%)</td><td class="n">15 of 16</td></tr>
+<tr><td>5th-best rule's 5th-percentile return</td><td class="n">+46%</td><td class="n">+60% (+30% to +163%)</td><td class="n">13 of 16</td></tr>
+<tr><td>Best "with the model" rule</td><td class="n">+56%</td><td class="n">+75% (+34% to +244%)</td><td class="n">13 of 16</td></tr>
+<tr><td>Rules returning +50% or more</td><td class="n">83</td><td class="n">206 (30 to 893)</td><td class="n">15 of 16</td></tr>
+</tbody></table></div>
+<div class="callout bad"><b>Answer:</b> a search this size over 12 games produces "winners" at least as good as these about 80–95% of the time even when there is no edge at all. The real day's best rules look ordinary, if anything slightly worse than luck. The results can't be told apart from chance. This test also assumes games are independent; a day-wide factor (an "unders Sunday") would make luck more likely still. The only way to know is to track rules 2 and 5, fixed as written now, on games they haven't seen.</div>
+
+<h2>4. Work instructions</h2>
+<p>These cover the two paper-trade strategies only. Strategies 1, 3 and 4 have no instructions because they shouldn't be bet. Run both for at least 4 weeks <b>on paper</b> (record the trade as if placed, place nothing) before any money goes in.</p>
+
+<div class="card">
+<h3>General rules for every bet</h3>
+<ol class="steps">
+  <li><b>Check the site is current.</b> Open <code>nfl.austingreen.net</code>. If the stale-data banner shows, or the game's numbers haven't updated in over 90 s while the game is live, place nothing.</li>
+  <li><b>Use the Model vs Kalshi page</b> (<code>edges.html</code>). Set <i>Bets</i> to <i>both sides</i>, <i>Lines</i> to <i>every line</i> and <i>Show</i> to <i>all</i>. Each row shows the bet (e.g. <i>under 250 (no)</i>), the <i>Model</i> chance, Kalshi's <i>Price</i> for that side, and the <i>Gap</i> (model chance minus price).</li>
+  <li><b>Check the spread on Kalshi.</b> Open the market (the link on the row). Skip it if the bid–ask spread is more than 10¢ or the price is under 3¢ or over 97¢.</li>
+  <li><b>Place a limit buy at the current ask.</b> Never a market order. If the ask moves before you're filled, re-check the rule at the new price and skip it if the rule no longer holds.</li>
+  <li><b>Size:</b> one fixed stake (a "unit") per bet, never more. <b>No more than 3 bets on one QB or one game part</b>, because they win or lose together.</li>
+  <li><b>Record it.</b> Press <i>Watch</i> on the row and enter the contracts and the price paid; the Watch list (<code>watch.html</code>) tracks the result. Also note the time, the model's chance, Kalshi's price and the closing price at kickoff (for CLV).</li>
+  <li><b>Hold to settlement.</b> Don't sell early: in the backtest, early exits gave up most of the profit.</li>
+</ol>
+</div>
+
+<div class="card">
+<h3>Strategy 2: NO on QB passing yards, before kickoff</h3>
+<div class="kv">
+<p><b>When</b> From 12 hours before kickoff until kickoff. Look once when you start, and again about 30 minutes before kickoff (the model re-runs about every hour).</p>
+<p><b>Where</b> Model vs Kalshi page: <i>Markets</i> = <i>QB passing yards</i>, <i>Games</i> = <i>upcoming only</i>.</p>
+<p><b>Buy</b> The NO (<i>under N (no)</i>) on a QB's yards line when <b>all</b> of these hold:</p>
+</div>
+<ol class="steps">
+  <li>The NO price is <b>under 50¢</b>.</li>
+  <li>The model's chance for that NO is <b>at least 3 points above</b> the NO price (Gap ≥ +3).</li>
+  <li>The NO price hasn't moved more than 1¢ in the last minute: watch it for one minute before buying.</li>
+  <li>The QB on the page is the expected starter. If there's injury or lineup news the model may not have yet, skip the QB.</li>
+</ol>
+<div class="kv">
+<p><b>Limits</b> At most 3 lines per QB: take the ones with the largest Gap. One unit each.</p>
+<p><b>Exit</b> Hold to settlement.</p>
+<p><b>Record</b> Watch list entry, plus the NO's mid-price at kickoff, for CLV.</p>
+</div>
+</div>
+
+<div class="card">
+<h3>Strategy 5: YES on quarter/half spreads, 2nd half</h3>
+<div class="kv">
+<p><b>When</b> 3rd and 4th quarters only.</p>
+<p><b>Where</b> Model vs Kalshi page: <i>Markets</i> = <i>Score</i>, <i>Games</i> = <i>live only</i>. Rows for <i>2nd half</i>, <i>Q3</i> or <i>Q4</i> spreads (<i>TEAM by N+</i>). Keep the game page's <i>Chances over time</i> chart (<code>chart.html</code>) open to see when the model moves.</p>
+<p><b>Buy</b> The YES on a 2nd-half, Q3 or Q4 spread when <b>all</b> of these hold:</p>
+</div>
+<ol class="steps">
+  <li>The YES price is <b>between 50¢ and 75¢</b>.</li>
+  <li>The model's chance is <b>at least 10 points above</b> the price (Gap ≥ +10).</li>
+  <li>The model's chance for that market <b>rose by 2 points or more in the last 15 seconds</b>, meaning the model just updated in that direction. If the gap opened because Kalshi's price dropped while the model stood still, skip it: that's usually the market reacting to a play the model hasn't seen yet.</li>
+  <li>The model's numbers are less than 90 s old.</li>
+</ol>
+<div class="kv">
+<p><b>Limits</b> At most 3 bets per game part (e.g. one game's 2nd half). One unit each. Only quarter/half spreads: the same rule on full-game spreads lost 28%.</p>
+<p><b>Exit</b> Hold to settlement.</p>
+<p><b>Note</b> This needs speed: the model is behind Kalshi by about 45 s on most plays, so the signal is only worth anything right after the model updates. Expect to miss many signals by hand.</p>
+</div>
+</div>
+
+<div class="card">
+<h3>Paper-trading review</h3>
+<ol class="steps">
+  <li>Count outcomes, not bets: one QB = one outcome; one game's 2nd half = one outcome.</li>
+  <li>After about <b>30 independent outcomes per strategy</b> (strategy 2: roughly 3 Sundays; strategy 5: roughly 3–4), compare each strategy's return with its no-model baseline and its average CLV.</li>
+  <li>Consider real money only if the return is positive, it beats the no-model baseline, and (for strategy 2) the average CLV is positive. Otherwise drop the strategy.</li>
+  <li>Stop a strategy at any point if a change to the model or the feed changes the numbers it relies on; restart the count after it.</li>
+</ol>
+</div>
+
+<h2>5. Caveats</h2>
+<ul>
+  <li><b>Selection:</b> the five rules are the best of 89,566 tried on the same 12 games; 12,154 rules made money that day. Some of the five would look this good by chance alone.</li>
+  <li><b>One day:</b> Sunday's results (unders on QB yards, leaders pulling away) shape every rule. Earlier games were left out because they used the slower feed.</li>
+  <li><b>Fills:</b> only top-of-book prices were logged, not size. Late in games, only 22–40% of market time had a two-sided quote within 10¢.</li>
+  <li><b>Model outages:</b> on Nov 1 the model had gaps of about 5–11 minutes around 1pm kickoffs (up to 18:05, 18:36–18:42 and 19:12–19:17 UTC). Signals during those gaps were excluded.</li>
+  <li><b>Monday night (CHI @ SEA)</b> is the first game the rules haven't seen. One game is a check that a rule isn't plainly broken, not evidence of an edge.</li>
+</ul>
+
+<footer>Scripts and raw output: <code>data/live/analysis/nov01/</code> (<code>bt5.py</code>, <code>timing2.py</code>, <code>out/bt5.txt</code>, <code>out/timing2_*.csv</code>). Data: the worker's history log, <code>/opt/nflsim/data/live/history/2026-11-01.jsonl.gz</code> and <code>2026-11-02.jsonl.gz</code>, read-only.</footer>
+</main>
+</body>
+</html>
