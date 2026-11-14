@@ -60,6 +60,13 @@ def test_a_score_puts_a_kickoff_to_the_other_team_next():
     assert s["clock"] == 3 * 900 + 14 * 60 + 45 and s["last_play"] == "T.Smack extra point is GOOD."
 
 
+def test_no_plays_yet_falls_back_to_espn():
+    # ESPN says the game is under way but Kalshi's feed has no plays: the callers catch this and use ESPN's state
+    import pytest
+    with pytest.raises(LookupError):
+        KF.game_state(_base(), M, {}, _stats([]))
+
+
 def test_after_a_safety_the_scoring_team_receives():
     plays = [_play(1, 2, "8:00", "rush", AWAY, "C.Hubbard rush to the left for a loss of 2 yards. SAFETY.", home=2)]
     s = KF.game_state(_base(), M, {}, _stats(plays))

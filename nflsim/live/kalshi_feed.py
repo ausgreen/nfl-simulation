@@ -193,8 +193,8 @@ def game_state(s: dict, m: dict, details: dict, game_stats: dict) -> dict:
     s["h2_receiver"] = side.get(kicks[0]["possession"], 1) if kicks else s.get("h2_receiver", 1)
     s["source"] = "kalshi"
     s["ot_poss"] = ot_possessions(ps, side)
-    if not ps:
-        return s
+    if not ps:  # ESPN says the game is under way but Kalshi's feed has nothing yet: the callers fall back to ESPN
+        raise LookupError("no plays in Kalshi's live data yet")
     last = ps[-1]
     fresh = (details.get("last_play") or {}).get("play_id") == last["play_id"]
     # score and points per quarter: each play carries the score after it
