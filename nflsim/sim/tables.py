@@ -7,7 +7,7 @@ The state before a snap is binned as
        zone as zc (the play call, 16) and zg (gains, 39: each yard inside the 20)
     c  clock phase: 1st half normal / its last 2:00 / 2nd half > 15 min / 15-5 min / 5-2 min / 2:00-0:31, then each
        half's 0:30-0:13 and last 12 seconds   (10)
-    s  offense's score margin: <=-17, -16..-9, -8..-1, 0, 1..8, 9..16, >=17   (7)
+    s  offense's score margin: <=-17, -16..-9, -8..-4, -3..-1, 0, 1..3, 4..8, 9..16, >=17   (9; see set_score_bins)
     tlo, tld  timeouts left for the offense / defense (4); tox  timeout after the play: none, offense, defense (3)
 Every table is filled on the full grid with hierarchical smoothing: a cell's probabilities shrink toward the next coarser
 level (pseudo-count K), and empirical samplers fall back to a coarser level when a cell has few plays.
@@ -29,6 +29,8 @@ ZC_EDGES = [5, 10, 20, 25, 30, 33, 35, 37, 39, 41, 44, 47, 50, 65, 80]
 # cut short the gains (and touchdowns) of plays from its far end. Each yard inside the 20, wider farther out.
 ZG_EDGES = list(range(1, 21)) + [22, 24, 26, 28, 30, 32, 35, 38, 41, 44, 47, 50, 55, 60, 65, 72, 80, 90]
 S_EDGES = [-17, -9, -1, 0, 8, 16]             # margin <=-17, <=-9, <=-1, ==0, <=8, <=16, else
+COARSE_S_EDGES = list(S_EDGES)
+FINE_S_EDGES = [-17, -9, -4, -1, 0, 3, 8, 16]  # also split one-score games at 3 (a field goal ties or wins)
 
 CALLS = ["pass", "run", "punt", "fg", "kneel", "spike", "pen"]   # pen: an accepted penalty, no play
 PASS_OUT = ["comp", "inc", "sack", "int", "int_td", "comp_fum", "sack_fum"]
@@ -56,7 +58,7 @@ def zg_bin(yl):
 
 
 def s_bin(margin):
-    return np.searchsorted(S_EDGES, np.asarray(margin), side="left").clip(0, 6)
+    return np.searchsorted(S_EDGES, np.asarray(margin), side="left").clip(0, len(S_EDGES))
 
 
 def s3_bin(margin):
@@ -86,6 +88,44 @@ DERIVED = {"c4": ("c", np.array([0, 1, 2, 3, 4, 5, 1, 5, 1, 5])),   # clock: the
            "s4": ("s", np.array([0, 0, 1, 2, 3, 3, 3])),            # margin: down 9+, down 1-8, tied, ahead
            "dd": ("d", np.array([0, 1, 2, 2]))}                     # down: 1st, 2nd, 3rd or 4th
 DIMS.update({"c4": 6, "s4": 4, "dd": 3})
+# game-script cells (script_cell): coarse clock x this score key
+SCRIPT_S = "s4"
+
+
+def set_score_bins(fine: bool) -> None:
+    """Score resolution of every table keyed by the margin. Fine: down/up 1-3 and 4-8 apart (a field goal ties or wins
+    only within 3), and the game-script gain adjustments and the pass results' score effect keyed by the full score
+    bin instead of s4 (which pooled down 9-16 with down 17+, and down 1-8). Fine is the default (docs/model-improvements.md:
+    late 4th-down kicks and punts by score now match real teams, call log loss on held-out seasons improved, regulation
+    ties 3.6% -> 4.6% of games). Coarse is kept for experiments only: call it before fitting tables (the season set-up
+    cache does not know about it)."""
+    global S_EDGES, SCRIPT_S
+    S_EDGES = list(FINE_S_EDGES if fine else COARSE_S_EDGES)
+    DIMS["s"] = len(S_EDGES) + 1
+    # s4: down 9+, down 1-8, tied, ahead (the same groups at either resolution)
+    DERIVED["s4"] = ("s", np.searchsorted([-9, -1, 0], np.array(S_EDGES + [99]), side="left"))
+    SCRIPT_S = "s" if fine else "s4"
+
+
+set_score_bins(True)
+
+
+# Recency weighting of the training seasons: a play from k seasons before the latest training season weighs
+# 0.5 ** (k / SEASON_HALF_LIFE) (normalized to a mean of 1, so the tables' pseudo-counts keep their meaning). None:
+# every season weighs the same.
+SEASON_HALF_LIFE: float | None = None
+
+
+def season_weights(season) -> np.ndarray:
+    season = np.asarray(season, float)
+    if SEASON_HALF_LIFE is None or not len(season):
+        return np.ones(len(season))
+    w = 0.5 ** ((season.max() - season) / SEASON_HALF_LIFE)
+    return w / w.mean()
+
+
+def _weights(df: pd.DataFrame) -> np.ndarray:
+    return df["w"].to_numpy(float) if "w" in df else np.ones(len(df))
 
 
 def _bin(bins: dict, k: str) -> np.ndarray:
@@ -130,7 +170,7 @@ class Categorical:
     def fit(cls, df: pd.DataFrame, outcome: str, labels: list, levels: list[list[str]]) -> "Categorical":
         y = pd.Categorical(df[outcome], categories=labels).codes
         df = df.assign(_y=y)[y >= 0]
-        onehot = np.eye(len(labels))[df._y.to_numpy()]
+        onehot = np.eye(len(labels))[df._y.to_numpy()] * _weights(df)[:, None]
         prior = onehot.mean(0) + 1e-6
         prior = prior / prior.sum()
         prev_keys, prev = [], np.tile(prior, (1, 1))
@@ -153,7 +193,7 @@ class Categorical:
         g = _grid(full)
         y = pd.Categorical(df[outcome], categories=labels).codes
         df = df.assign(_y=y)[y >= 0]
-        onehot = np.eye(len(labels))[df._y.to_numpy()]
+        onehot = np.eye(len(labels))[df._y.to_numpy()] * _weights(df)[:, None]
         prior = cls.fit(df, outcome, labels, chains[0]).probs[_ravel(g, chains[0][-1])].copy()
         for ch in chains[1:]:
             pt, base = cls.fit(df, outcome, labels, ch), cls.fit(df, outcome, labels, [ch[0]])
@@ -172,11 +212,14 @@ class Categorical:
 
 @dataclass
 class Empirical:
-    """Sample a value from the plays in a cell, falling back to coarser levels when a cell has < min_n plays."""
+    """Sample a value from the plays in a cell, falling back to coarser levels when a cell has < min_n plays.
+    With play weights (a `w` column, see SEASON_HALF_LIFE), a play is drawn with probability proportional to its
+    weight; `cw` holds the running sum of the weights (cw[i] = weight of values[:i])."""
     keys: list
     values: np.ndarray
     offset: np.ndarray           # per full-grid cell
     count: np.ndarray
+    cw: np.ndarray | None = None
 
     @classmethod
     def fit(cls, df: pd.DataFrame, value: str, levels: list[list[str]], min_n: int = 40) -> "Empirical":
@@ -184,13 +227,15 @@ class Empirical:
         g = _grid(full)
         offset = np.zeros(len(g), dtype=np.int64)
         count = np.zeros(len(g), dtype=np.int64)
-        chunks, pos = [], 0
+        chunks, wchunks, pos = [], [], 0
         assigned = np.zeros(len(g), dtype=bool)
+        w = _weights(df)
         for keys in reversed(levels):  # most specific first
             cell_of_play = _ravel(df, keys) if keys else np.zeros(len(df), dtype=np.int64)
             cell_of_grid = _ravel(g, keys) if keys else np.zeros(len(g), dtype=np.int64)
             order = np.argsort(cell_of_play, kind="stable")
             vals = df[value].to_numpy(float)[order]
+            wchunks.append(w[order])
             n_cells = int(np.prod([DIMS[k] for k in keys])) if keys else 1
             cnt = np.bincount(cell_of_play, minlength=n_cells)
             off = np.concatenate([[0], np.cumsum(cnt)[:-1]]) + pos
@@ -199,18 +244,31 @@ class Empirical:
             assigned |= take
             chunks.append(vals)
             pos += len(vals)
-        return cls(full, np.concatenate(chunks), offset, np.maximum(count, 1))
+        ws = np.concatenate(wchunks) if wchunks else np.zeros(0)
+        cw = np.concatenate([[0.0], np.cumsum(ws)]) if "w" in df else None
+        return cls(full, np.concatenate(chunks), offset, np.maximum(count, 1), cw)
 
     def cell(self, **bins) -> np.ndarray:
         return np.ravel_multi_index([_bin(bins, k) for k in self.keys], [DIMS[k] for k in self.keys])
 
     def sample(self, rng, cell) -> np.ndarray:
-        return self.values[self.offset[cell] + (rng.random(len(cell)) * self.count[cell]).astype(np.int64)]
+        u = rng.random(len(cell))
+        if self.cw is None:
+            return self.values[self.offset[cell] + (u * self.count[cell]).astype(np.int64)]
+        lo, hi = self.offset[cell], self.offset[cell] + self.count[cell]
+        target = self.cw[lo] + u * (self.cw[hi] - self.cw[lo])
+        i = np.searchsorted(self.cw, target, side="right") - 1
+        return self.values[np.clip(i, lo, hi - 1)]
 
     def means(self) -> np.ndarray:
-        """Mean value per full-grid cell (of the plays that cell samples from)."""
-        cs = np.concatenate([[0.0], np.cumsum(self.values)])
-        return (cs[self.offset + self.count] - cs[self.offset]) / self.count
+        """Mean value per full-grid cell (of the plays that cell samples from, weighted)."""
+        if self.cw is None:
+            cs = np.concatenate([[0.0], np.cumsum(self.values)])
+            return (cs[self.offset + self.count] - cs[self.offset]) / self.count
+        n = len(self.values)
+        wv = np.concatenate([[0.0], np.cumsum(np.diff(self.cw) * self.values)])
+        lo, hi = self.offset, np.minimum(self.offset + self.count, n)
+        return (wv[hi] - wv[lo]) / np.maximum(self.cw[hi] - self.cw[lo], 1e-12)
 
 
 @dataclass
@@ -312,7 +370,12 @@ def _fourth_features(df: pd.DataFrame) -> np.ndarray:
     t, zc, c, sm = (df[k].to_numpy(int) for k in ("t", "zc", "c", "s"))
     c4, s4 = _col(df, "c4"), _col(df, "s4")
     rng_ = np.digitize(df["zc"].to_numpy(int), [8, 13])          # opp 37 or closer / 38-50 / farther
-    parts = [(t, 5), (zc, 16), (c, 10), (sm, 7), (c4 * 4 + s4, 24), ((rng_ * 6 + c4) * 4 + s4, 72), (t * 4 + s4, 20)]
+    if SCRIPT_S == "s":  # fine score bins: the interactions use them too (down 1-3 kicks, down 4-8 goes)
+        s4, S4 = sm, DIMS["s"]
+    else:
+        S4 = DIMS["s4"]
+    parts = [(t, 5), (zc, 16), (c, 10), (sm, DIMS["s"]), (c4 * S4 + s4, 6 * S4), ((rng_ * 6 + c4) * S4 + s4, 18 * S4),
+             (t * S4 + s4, 5 * S4)]
     return np.hstack([np.eye(k)[v] for v, k in parts])
 
 
@@ -322,7 +385,8 @@ def fourth_down_calls(s4: pd.DataFrame, cells: pd.DataFrame) -> np.ndarray:
 
     y = pd.Categorical(s4.call, categories=CALLS).codes
     keep = y >= 0
-    lr = LogisticRegression(C=1.0, max_iter=2000).fit(_fourth_features(s4[keep]), y[keep])
+    lr = LogisticRegression(C=1.0, max_iter=2000).fit(_fourth_features(s4[keep]), y[keep],
+                                                     sample_weight=_weights(s4)[keep])
     out = np.zeros((len(cells), len(CALLS)))
     out[:, lr.classes_] = lr.predict_proba(_fourth_features(cells))
     return out
@@ -331,9 +395,14 @@ def fourth_down_calls(s4: pd.DataFrame, cells: pd.DataFrame) -> np.ndarray:
 SCRIPT_K = 300.0   # plays of shrinkage toward no game-script effect
 
 
+def script_cells() -> int:
+    return DIMS["c4"] * DIMS[SCRIPT_S]
+
+
 def script_cell(c, s) -> np.ndarray:
-    """Coarse clock x score cell (24) of the game-script gain adjustments."""
-    return DERIVED["c4"][1][np.asarray(c, int)] * 4 + DERIVED["s4"][1][np.asarray(s, int)]
+    """Coarse clock x score cell (script_cells()) of the game-script gain adjustments."""
+    s = np.asarray(s, int)
+    return DERIVED["c4"][1][np.asarray(c, int)] * DIMS[SCRIPT_S] + (s if SCRIPT_S == "s" else DERIVED["s4"][1][s])
 
 
 def script_gains(comp: pd.DataFrame, rs: pd.DataFrame, comp_gain: Empirical, run_gain: Empirical,
@@ -348,13 +417,14 @@ def script_gains(comp: pd.DataFrame, rs: pd.DataFrame, comp_gain: Empirical, run
     exp = np.mean([np.minimum(comp_gain.sample(rng, cell), yl) for _ in range(draws)], axis=0)
     act = np.minimum(comp.gain.to_numpy(float), yl)
     sc = script_cell(comp.c, comp.s)
-    m = exp.mean()
-    num, den = np.bincount(sc, act, 24), np.bincount(sc, exp, 24)
-    n = np.bincount(sc, minlength=24)
+    wc, wr = _weights(comp), _weights(rs)
+    m = np.average(exp, weights=wc)
+    nc = script_cells()
+    num, den = np.bincount(sc, act * wc, nc), np.bincount(sc, exp * wc, nc)
     comp_scale = (num + SCRIPT_K * m) / (den + SCRIPT_K * m)
     rm = run_gain.means()[run_gain.cell(t=rs.t, z=rs.z, zg=rs.zg)]
     rc = script_cell(rs.c, rs.s)
-    run_shift = np.bincount(rc, rs.gain.to_numpy(float) - rm, 24) / (np.bincount(rc, minlength=24) + SCRIPT_K)
+    run_shift = np.bincount(rc, (rs.gain.to_numpy(float) - rm) * wr, nc) / (np.bincount(rc, wr, nc) + SCRIPT_K)
     return comp_scale, run_shift
 
 
@@ -394,7 +464,7 @@ def tries(p: pd.DataFrame) -> tuple[Categorical, float]:
                    two=(tr.two_point_attempt == 1).astype(int).astype(str))
     two = tr[tr.two == "1"]
     return (Categorical.fit(tr, "two", ["0", "1"], [["mt"], ["mt", "c"]]),
-            float((two.two_point_conv_result == "success").mean()) if len(two) else 0.5)
+            float(np.average(two.two_point_conv_result == "success", weights=_weights(two))) if len(two) else 0.5)
 
 
 def onside(p: pd.DataFrame) -> tuple[Categorical, np.ndarray, np.ndarray]:
@@ -423,11 +493,14 @@ def kick_turnovers(p: pd.DataFrame) -> dict:
     ko, pu = p[p.kickoff_attempt == 1], p[p.play_type == "punt"]
     sf = p[(p.sack == 1) & (p.fumble_lost == 1)]
     td = p.touchdown == 1
-    return {"ko_fum": float(((ko.fumble_lost == 1) & ~td[ko.index]).mean()),
-            "ko_td": float((td[ko.index] & (ko.td_team == ko.posteam)).mean()),
-            "punt_fum": float(((pu.fumble_lost == 1) & ~td[pu.index]).mean()),
-            "punt_td": float((td[pu.index] & (pu.td_team == pu.defteam)).mean()),
-            "sack_fum_td": float((td[sf.index] & (sf.td_team == sf.defteam)).mean()) if len(sf) else 0.0}
+
+    def avg(x, df):
+        return float(np.average(x, weights=_weights(df)))
+    return {"ko_fum": avg((ko.fumble_lost == 1) & ~td[ko.index], ko),
+            "ko_td": avg(td[ko.index] & (ko.td_team == ko.posteam), ko),
+            "punt_fum": avg((pu.fumble_lost == 1) & ~td[pu.index], pu),
+            "punt_td": avg(td[pu.index] & (pu.td_team == pu.defteam), pu),
+            "sack_fum_td": avg(td[sf.index] & (sf.td_team == sf.defteam), sf) if len(sf) else 0.0}
 
 
 def starter_exits(s: pd.DataFrame, starters: dict) -> pd.DataFrame:
@@ -452,6 +525,8 @@ def starter_exits(s: pd.DataFrame, starters: dict) -> pd.DataFrame:
 
 
 def fit(p: pd.DataFrame, starters: dict) -> Tables:
+    if SEASON_HALF_LIFE is not None:
+        p = p.assign(w=season_weights(p.season))
     s = prepare(p)
     full = ["d", "t", "z", "zc", "c", "s"]
     # three parts, each adding its own effect: field position and distance; the clock given down and zone (kicks on
@@ -468,7 +543,8 @@ def fit(p: pd.DataFrame, starters: dict) -> Tables:
     ps = s[s.call == "pass"]
     # pass results by situation, times what the score adds given the clock (trailing late: more interceptions)
     pass_out = Categorical.fit_product(ps, "pass_out", PASS_OUT,
-                                       [[["z"], ["t", "z"], ["d", "t", "z"], ["d", "t", "z", "c"]], [["c4"], ["c4", "s4"]]],
+                                       [[["z"], ["t", "z"], ["d", "t", "z"], ["d", "t", "z", "c"]],
+                                        [["c4"], ["c4", "s4"]] + ([["c4", "s"]] if SCRIPT_S == "s" else [])],
                                        ["d", "t", "z", "c", "s"])
     rs = s[s.call == "run"]
     run_out = Categorical.fit(rs, "run_out", RUN_OUT, [["z"]])
@@ -505,7 +581,8 @@ def fit(p: pd.DataFrame, starters: dict) -> Tables:
     fg = s[s.call == "fg"]
     from sklearn.linear_model import LogisticRegression
     x = fg.yardline_100.to_numpy(float)[:, None]
-    lr = LogisticRegression(C=1e3).fit(np.hstack([x, x ** 2 / 100]), fg.field_goal_result == "made")
+    lr = LogisticRegression(C=1e3).fit(np.hstack([x, x ** 2 / 100]), fg.field_goal_result == "made",
+                                       sample_weight=_weights(fg))
     mid = np.arange(DIMS["fgz"]) * 5 + 2.0
     fg_make = lr.predict_proba(np.column_stack([mid, mid ** 2 / 100]))[:, 1]
     fg_make = np.minimum.accumulate(fg_make)  # never better from farther out

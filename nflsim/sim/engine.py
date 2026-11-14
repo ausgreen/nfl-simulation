@@ -56,7 +56,7 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
     """Final passing yards of both starters: array (rows, n, 2); with points=True also each team's points
     scored from the start state on (rows, n, 2). With record=True (use a small max_steps), returns a dict of the
     state after the last step instead: yds, pts, pos, yl, down, togo, clock, margin, kick, done, event (code into
-    EVENTS, -1 if no snap), gain, on_downs; each shaped (rows, n[, 2]). With drive=True, each game stops when the
+    EVENTS, -1 if no snap), gain, on_downs, timeouts (left per team); each shaped (rows, n[, 2]). With drive=True, each game stops when the
     drive in progress ends (the receiving team's drive if a kickoff is pending) and the result is a dict: result
     (code into DRIVE_RESULTS, -1 if no snap), plays, used (seconds), pts, yds, margin, clock. With points=True and
     quarters=True, also the points each team scored in each regulation quarter (rows, n, 4, 2), credited to the
@@ -473,7 +473,8 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
         return {"yds": yds.reshape(r, n, 2), "pts": pts.reshape(r, n, 2), "pos": pos.reshape(sh),
                 "yl": yl.reshape(sh), "down": down.reshape(sh), "togo": togo.reshape(sh), "clock": clock.reshape(sh),
                 "margin": margin.reshape(sh), "kick": kick.reshape(sh), "done": done.reshape(sh),
-                "event": event.reshape(sh), "gain": last_gain.reshape(sh), "on_downs": last_downs.reshape(sh)}
+                "event": event.reshape(sh), "gain": last_gain.reshape(sh), "on_downs": last_downs.reshape(sh),
+                "timeouts": tl.reshape(r, n, 2)}
     if points and quarters:
         return yds.reshape(r, n, 2), pts.reshape(r, n, 2), qpts.reshape(r, n, 4, 2)
     if points:
