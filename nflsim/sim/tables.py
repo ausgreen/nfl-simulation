@@ -104,6 +104,7 @@ def set_score_bins(fine: bool) -> None:
     DIMS["s"] = len(S_EDGES) + 1
     # s4: down 9+, down 1-8, tied, ahead (the same groups at either resolution)
     DERIVED["s4"] = ("s", np.searchsorted([-9, -1, 0], np.array(S_EDGES + [99]), side="left"))
+    DERIVED["s3"] = ("s", s3_bin(np.array(S_EDGES + [99])))  # trailing / tied / leading
     SCRIPT_S = "s" if fine else "s4"
 
 
@@ -114,6 +115,12 @@ set_score_bins(True)
 # 0.5 ** (k / SEASON_HALF_LIFE) (normalized to a mean of 1, so the tables' pseudo-counts keep their meaning). None:
 # every season weighs the same.
 SEASON_HALF_LIFE: float | None = None
+# clock to the next snap keyed by the score bin (s), not only trailing / tied / leading (s3): in the 4th quarter's
+# 15:00-5:00, real teams down 9-16 snapped every 33.0 s (runs and completions, no timeout, 2019-24), down 1-3 every
+# 36.9 s, up 9-16 every 40.1 s. It fixes the held-out clock residuals by score, but in the 2025-26 backtest it left win
+# chances unchanged and moved QB lines both ways (worse pregame and before the 4th quarter, better in the last 5:00):
+# off (docs/model-improvements.md)
+ELAPSED_BY_SCORE = False
 
 
 def season_weights(season) -> np.ndarray:
@@ -565,8 +572,10 @@ def fit(p: pd.DataFrame, starters: dict) -> Tables:
     punt_yl = Empirical.fit(pu, "next_yl", [[], ["z"]])
     # snaps whose next snap came at a two-minute warning: the engine stops the clock there itself
     warned = s.has_next & s.next_clock.isin([1920.0, 120.0]) & (s.game_seconds_remaining > s.next_clock)
-    elapsed = Empirical.fit(s[~warned], "elapsed", [[], ["cat"], ["cat", "tox"], ["cat", "tox", "c"],
-                                                    ["cat", "tox", "c", "s3"]], min_n=30)
+    levels = [[], ["cat"], ["cat", "tox"], ["cat", "tox", "c"], ["cat", "tox", "c", "s3"]]
+    if ELAPSED_BY_SCORE:  # how far behind or ahead, where a cell has the plays for it
+        levels.append(["cat", "tox", "c", "s"])
+    elapsed = Empirical.fit(s[~warned], "elapsed", levels, min_n=30)
     # who calls a timeout after a play, by clock phase, score, the play and the timeouts each side has left
     tm = s[s.has_next].assign(tx=lambda x: x.tox.astype(str))
     timeout = Categorical.fit_product(tm, "tx", ["0", "1", "2"],

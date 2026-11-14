@@ -387,7 +387,7 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
             caller = np.where(tox == 1, p, 1 - p)
             used = tox > 0
             tl[a[used], caller[used]] -= 1
-        dt = tb.elapsed.sample(rng, tb.elapsed.cell(cat=cat, tox=tox, c=c, s3=s3))
+        dt = tb.elapsed.sample(rng, tb.elapsed.cell(cat=cat, tox=tox, c=c, s3=s3, s=s))
         normal = ((c == 0) | (c == 2)) & (dt > 0)
         dt = np.where(normal, np.maximum(dt + tp["pace"][ra, p], 1), dt)
         # a leader's kneel with time left takes the whole play clock (the table's kneels average ~33 s: it learns
