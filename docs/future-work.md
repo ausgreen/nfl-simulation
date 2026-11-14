@@ -70,3 +70,26 @@ v3 was close late in 2023 (221 vs 224) and 2024 (221 vs 224), so that is one sea
 
 **Why it waits.** A pace trend term (each season's league residual, unshrunk, carried into the next) is the general
 fix; it needs a backtest showing it helps scores or QB lines, not only snap counts.
+
+**Update 2026-11-14** (docs/model-improvements.md). 2026 partly reversed 2025: runs 37.4 s and completions 36.2 s per
+snap, 123.2 snaps a game, 4th-down go rate 18.3% (2025: 21.6%; 2016: 12.1%). A carried-forward 2025 residual would
+have overshot 2026. Recency-weighted tables (half-life 2 seasons, `tables.SEASON_HALF_LIFE`) were backtested on
+2023-24: QB lines and totals a little better, win chances before the 4th quarter a little worse, held-out play-call
+log loss worse; left off. Also seen: since the 2025 kickoff rule the clock after a score runs to the next snap in
+9.9 s (2020-24: 6.4-7.7 s), ~20 s a game the tables (2021-25) only partly have.
+
+## Late deficits: teams down 9-16 still score too little
+
+Measured 2026-11-14 (docs/model-improvements.md), after the finer score bins.
+
+**Finding.** Simulating every real 2023-24 drive from its start, teams down 9-16 with 10:00 or less left scored 0.7
+points per drive more in real games (TD 28% vs 22%, n = 264, se 0.19). Snap by snap in the 4th quarter they pass 2-3
+points less than real teams on downs 1-3 (table 77-78% vs real 79-80%) and convert 4-5 points fewer first downs on
+2nd and 3rd down; completion gains per catch are right (10.9 real vs 10.7). In the 4th quarter's 15:00-5:00 real teams
+down 9-16 also snap every 33.0 s against 36.9 s down 1-3, which the clock table (keyed trailing / tied / leading)
+pools; keying it by score (`tables.ELAPSED_BY_SCORE`) fixed the clock residuals but gave mixed backtest results
+(QB lines worse before the 4th quarter in 2025-26) and is off.
+
+**Why it waits.** Adding distance or field position to the call table's score chain made held-out call log loss
+worse (the product of chains double-counts). The general fix is a call model fit on score x clock x down x distance
+together (a logistic regression like the 4th-down one), not a rule for trailing teams.

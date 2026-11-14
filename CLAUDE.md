@@ -105,13 +105,19 @@ quarter blowouts; engine columns `lead_pass`/`trail_pass`/`def_to`/`pull`, coach
 (272 games, Q4 states): QB-line Brier better in 92% of game resamples (mostly blowouts), win Brier in 85%; small gains,
 and they don't fix the late-game win overconfidence.
 Not modeled: penalties on plays that stand. The final score includes overtime; the
-quarter projections are regulation only. Regulation ends tied less often than real games do (3.6% vs 6.2%). Win
-chances are still somewhat overconfident in the 4th quarter (2025: 11 upsets where the model expected 4).
+quarter projections are regulation only. Regulation ends tied less often than real games do (4.6% vs 5.8%, 2023-26). Win
+chances are still somewhat overconfident in the 4th quarter (2025-26: 100 losses by favorites at 0.8+ at Q4
+checkpoints where 78 were expected).
+Score bins split one-score games at 3 points (9 bins, `tables.set_score_bins`; game-script gains, pass-result score
+effects and 4th-down interactions use them): see `docs/model-improvements.md` for that pass (v3 unchanged: no
+feature tried beat noise) and `experiments/model_improve/` for the season backtest harness (`backtest.py`,
+`compare.py`, `reliability.py`). `tables.SEASON_HALF_LIFE` (recency-weighted tables) and `tables.ELAPSED_BY_SCORE`
+were tried and are off.
 
 ## Caches (`data/live/`, gitignored except `wf_rows.parquet`)
 
 - `sim_setup_<season>.pkl` is keyed by a hash of the simulator's code and the pbp files' mtimes, so editing `sim/`
-  or refetching pbp triggers a rebuild (~45 s per season) on next use.
+  or refetching pbp triggers a rebuild (~15-45 s per season) on next use.
 - `live_v3_<season>_wNN.parquet` (weekly v3 predictions) is computed the first time a week is used. The hosted worker
   recomputes it every 3 h while a game is still to start (`LiveModel.update_preds`; games under way keep their
   numbers) and re-downloads stats, schedules and pbp daily when no game is on (`Worker.refresh`); status.json's `data`
