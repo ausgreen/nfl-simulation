@@ -6,7 +6,10 @@ The state before a snap is binned as
     z  field position (yardline_100): 1-5, 6-10, 11-20, 21-35, 36-50, 51-65, 66-80, 81-99   (8), refined inside each
        zone as zc (the play call, 16) and zg (gains, 39: each yard inside the 20)
     c  clock phase: 1st half normal / its last 2:00 / 2nd half > 15 min / 15-5 min / 5-2 min / 2:00-0:31, then each
-       half's 0:30-0:13 and last 12 seconds   (10)
+       half's 0:30-0:13 and last 12 seconds (6-9); the 4th quarter's 15-5 min is cut at 10:00 and 7:30 (codes 3, 10,
+       11; see set_clock_bins)   (12)
+The play call on downs 1-3 is a logistic regression on joint one-hot terms (early_down_calls), keyed also by the
+offense's timeouts left (tlo); 4th downs have their own (fourth_down_calls).
     s  offense's score margin: <=-17, -16..-9, -8..-4, -3..-1, 0, 1..3, 4..8, 9..16, >=17   (9; see set_score_bins)
     tlo, tld  timeouts left for the offense / defense (4); tox  timeout after the play: none, offense, defense (3)
 Every table is filled on the full grid with hierarchical smoothing: a cell's probabilities shrink toward the next coarser
@@ -75,8 +78,24 @@ def c_bin(clock):
     first = g > 1800
     h = np.where(first, g - 1800, g)
     late = np.where(h > 30, -1, np.where(h > 12, 6, 8)) + np.where(first, 0, 1)
-    return np.where(h > 120, np.where(first, 0, np.where(g > 900, 2, np.where(g > 300, 3, 4))),
+    q4 = np.full(np.shape(g), 3)
+    for j, edge in enumerate(Q4_SPLITS):  # 4th quarter 15:00-5:00 cut further (codes 10, 11, ...)
+        q4 = np.where(g <= edge, 10 + j, q4)
+    return np.where(h > 120, np.where(first, 0, np.where(g > 900, 2, np.where(g > 300, q4, 4))),
                     np.where(h > 30, np.where(first, 1, 5), late))
+
+
+# Seconds left at which the 4th quarter's 15:00-5:00 phase (c = 3) is cut into more phases (set_clock_bins).
+Q4_SPLITS: list = []
+
+
+def set_clock_bins(q4_splits) -> None:
+    """Cut the 4th quarter's 15:00-5:00 clock phase at these seconds left (descending), adding phases 10, 11, ...
+    Call before fitting tables (the season set-up cache does not know about it)."""
+    global Q4_SPLITS
+    Q4_SPLITS = sorted(q4_splits, reverse=True)
+    DIMS["c"] = 10 + len(Q4_SPLITS)
+    DERIVED["c4"] = ("c", np.array([0, 1, 2, 3, 4, 5, 1, 5, 1, 5] + [3] * len(Q4_SPLITS)))
 
 
 def fg_bin(yl):
@@ -109,6 +128,9 @@ def set_score_bins(fine: bool) -> None:
 
 
 set_score_bins(True)
+# 15:00-10:00, 10:00-7:30, 7:30-5:00: within the old single phase, real teams down 9-16 passed 65% of early downs at
+# 15:00-12:30 and 80% at 8:00-5:00, and snapped every 35 s then 30 s (2019-24); one phase averaged them away
+set_clock_bins([600, 450])
 
 
 # Recency weighting of the training seasons: a play from k seasons before the latest training season weighs
@@ -117,10 +139,9 @@ set_score_bins(True)
 SEASON_HALF_LIFE: float | None = None
 # clock to the next snap keyed by the score bin (s), not only trailing / tied / leading (s3): in the 4th quarter's
 # 15:00-5:00, real teams down 9-16 snapped every 33.0 s (runs and completions, no timeout, 2019-24), down 1-3 every
-# 36.9 s, up 9-16 every 40.1 s. It fixes the held-out clock residuals by score, but in the 2025-26 backtest it left win
-# chances unchanged and moved QB lines both ways (worse pregame and before the 4th quarter, better in the last 5:00):
-# off (docs/model-improvements.md)
-ELAPSED_BY_SCORE = False
+# 36.9 s, up 9-16 every 40.1 s. Alone (on one 15:00-5:00 phase) it was mixed; with the 4th quarter cut into three
+# phases it improved in-game win, spread and QB-line Brier pooled over 2023-26 (docs/model-improvements.md): on.
+ELAPSED_BY_SCORE = True
 
 
 def season_weights(season) -> np.ndarray:
@@ -381,7 +402,7 @@ def _fourth_features(df: pd.DataFrame) -> np.ndarray:
         s4, S4 = sm, DIMS["s"]
     else:
         S4 = DIMS["s4"]
-    parts = [(t, 5), (zc, 16), (c, 10), (sm, DIMS["s"]), (c4 * S4 + s4, 6 * S4), ((rng_ * 6 + c4) * S4 + s4, 18 * S4),
+    parts = [(t, 5), (zc, 16), (c, DIMS["c"]), (sm, DIMS["s"]), (c4 * S4 + s4, 6 * S4), ((rng_ * 6 + c4) * S4 + s4, 18 * S4),
              (t * S4 + s4, 5 * S4)]
     return np.hstack([np.eye(k)[v] for v, k in parts])
 
@@ -397,6 +418,46 @@ def fourth_down_calls(s4: pd.DataFrame, cells: pd.DataFrame) -> np.ndarray:
     out = np.zeros((len(cells), len(CALLS)))
     out[:, lr.classes_] = lr.predict_proba(_fourth_features(cells))
     return out
+
+
+# The play call on downs 1-3: "lr" = early_down_calls (default: held-out call log loss 0.7720 -> 0.7626 on 2023-24,
+# 0.7846 -> 0.7744 on 2025-26, docs/model-improvements.md), "table" = the product of smoothed tables (fit).
+CALL_MODEL = "lr"
+# early_down_calls' one-hot interactions: what each pair or triple of keys adds jointly
+CALL_LR_TERMS = [("d", "t"), ("d", "zc"), ("t", "zc"), ("d", "c"), ("zc", "c"), ("c", "s"), ("d", "c4", "s"),
+                 ("t", "c4", "s"), ("c", "tlo"), ("c", "s4", "tlo")]
+CALL_LR_C = 0.3
+
+
+def _onehot_terms(df: pd.DataFrame, terms) -> "sp.csr_matrix":
+    import scipy.sparse as sp
+
+    n, cols, off = len(df), [], 0
+    for keys in terms:
+        cols.append(_ravel(df, list(keys)) + off)
+        off += int(np.prod([DIMS[k] for k in keys]))
+    rows = np.tile(np.arange(n), len(terms))
+    return sp.csr_matrix((np.ones(n * len(terms)), (rows, np.concatenate(cols))), shape=(n, off))
+
+
+def early_down_calls(s: pd.DataFrame) -> Categorical:
+    """P(call) on every grid cell (d, t, z, zc, c, s, tlo): a multinomial logistic regression on downs 1-3 with
+    joint one-hot terms (CALL_LR_TERMS), so score x clock x down x distance and the offense's timeouts combine as the
+    plays say instead of as a product of separately smoothed tables. 4th-down cells are filled by fit."""
+    from sklearn.linear_model import LogisticRegression
+
+    keys = ["d", "t", "z", "zc", "c", "s", "tlo"]
+    tr = s[(s.d < 3) & s.call.isin(CALLS)]
+    y = pd.Categorical(tr.call, categories=CALLS).codes
+    lr = LogisticRegression(C=CALL_LR_C, max_iter=3000).fit(_onehot_terms(tr, CALL_LR_TERMS), y,
+                                                            sample_weight=_weights(tr))
+    g = _grid(keys)
+    # z follows from zc: only consistent cells are ever looked up; the rest copy them to keep the grid simple
+    probs = np.zeros((len(g), len(CALLS)), dtype=np.float32)
+    early = (g.d < 3).to_numpy() & (g.z.to_numpy() == z_bin(np.array(ZC_EDGES + [99]))[g.zc.to_numpy()])
+    probs[np.ix_(early, lr.classes_)] = lr.predict_proba(_onehot_terms(g[early], CALL_LR_TERMS))
+    probs[~early] = 1.0 / len(CALLS)
+    return Categorical(keys, probs)
 
 
 SCRIPT_K = 300.0   # plays of shrinkage toward no game-script effect
@@ -539,12 +600,16 @@ def fit(p: pd.DataFrame, starters: dict) -> Tables:
     # three parts, each adding its own effect: field position and distance; the clock given down and zone (kicks on
     # any down in range in a half's last seconds); the score given down and clock (in one nested chain the score
     # effect was shrunk away: late leads passed far more than real teams do)
-    call = Categorical.fit_product(s, "call", CALLS, [[["d"], ["d", "z"], ["d", "t", "z"], ["d", "t", "z", "zc"]],
-                                                      [["d", "z"], ["d", "z", "c"]], [["d", "c"], ["d", "c", "s"]]],
-                                   full)
+    if CALL_MODEL == "lr":
+        call = early_down_calls(s)
+        g = _grid(call.keys)
+    else:
+        call = Categorical.fit_product(s, "call", CALLS, [[["d"], ["d", "z"], ["d", "t", "z"], ["d", "t", "z", "zc"]],
+                                                          [["d", "z"], ["d", "z", "c"]], [["d", "c"], ["d", "c", "s"]]],
+                                       full)
+        g = _grid(full)
     # 4th downs on their own: kick or go depends on field position, score and clock together (down 1-3 late, kick
     # the tying field goal; trailing farther out, go for it), which a product of smoothed tables caps
-    g = _grid(full)
     fourth = g.d.to_numpy() == 3
     call.probs[fourth] = fourth_down_calls(s[s.d == 3], g[fourth])
     ps = s[s.call == "pass"]

@@ -29,6 +29,10 @@ SMOOTH = 20.0        # yards added to both sides of log ratios
 # of Q1 to 7:30 left), 4 scored line chances (100-350 yds) slightly better than 1, the simulator's own variance
 # (Brier 0.158 vs 0.160 at halftime), and about as well as no update, while still reacting to extreme games.
 OBS_SCALE = 4.0
+# Anchor each team's mean points to its implied points plus the training seasons' average (points - implied):
+# closing lines sit near the median score, and scores are skewed up, so the mean runs above them (2016-25: +0.4
+# total points a game on average). See noise_scales' "line_bias".
+ANCHOR_LINE_BIAS = False
 # metric: (pseudo-plays K, logit scale?)
 METRICS = {"pass": (400, True), "sack": (400, True), "int": (800, True), "comp": (400, True), "run": (300, False),
            "pace": (300, False)}
@@ -38,7 +42,7 @@ def play_residuals(tb: T.Tables, s: pd.DataFrame) -> pd.DataFrame:
     """Per-play (obs - expected) for each metric; NaN where a play doesn't count for it. `s` from tables.prepare."""
     out = pd.DataFrame({"game_id": s.game_id, "season": s.season, "week": s.week, "off": s.posteam,
                         "def": s.defteam})
-    pc = tb.call.probs[tb.call.cell(d=s.d, t=s.t, z=s.z, zc=s.zc, c=s.c, s=s.s)]
+    pc = tb.call.probs[tb.call.cell(d=s.d, t=s.t, z=s.z, zc=s.zc, c=s.c, s=s.s, tlo=s.tlo)]
     pr = s.call.isin(["pass", "run"]).to_numpy()
     out["pass"] = np.where(pr, (s.call == "pass") - pc[:, 0] / (pc[:, 0] + pc[:, 1]), np.nan)
     q = tb.pass_out.probs[tb.pass_out.cell(d=s.d, t=s.t, z=s.z, c=s.c, s=s.s)]
@@ -161,6 +165,7 @@ def noise_scales(tb: T.Tables, to_mult, starts: pd.DataFrame, team_games: pd.Dat
     real_pts = float(np.var(team_games.points - team_games.implied))
     extra_pts = max(real_pts - float(np.var(p0)), 0.0)
     return {"tau2": tau2, "form_sd": form_sd, "delta_sd": float(np.sqrt(extra_pts)) / float(slope[1, 1]),
+            "line_bias": float(np.mean(team_games.points - team_games.implied)),
             "real_logyds_var": float(np.var(real)), "sim_pts_var": float(np.var(p0)), "real_pts_var": real_pts}
 
 
@@ -201,7 +206,9 @@ def anchor(tb: T.Tables, params: pd.DataFrame, to_mult, slope: np.ndarray, noise
             bad = np.abs(np.linalg.det(J)) < 0.1 * np.linalg.det(fallback)
             J[bad] = fallback
             inv = np.linalg.inv(J)
-        target = np.stack([p.mu0, p.imp0.fillna(pd.Series(pm[:, 0])), p.mu1, p.imp1.fillna(pd.Series(pm[:, 1]))], -1)
+        lb = noise.get("line_bias", 0.0) if ANCHOR_LINE_BIAS else 0.0
+        target = np.stack([p.mu0, (p.imp0 + lb).fillna(pd.Series(pm[:, 0])), p.mu1,
+                           (p.imp1 + lb).fillna(pd.Series(pm[:, 1]))], -1)
         step = damp * np.einsum("gij,gj->gi", inv, target - resp)
         for j, c in enumerate(names):
             if c.startswith("mult"):

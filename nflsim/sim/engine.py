@@ -62,7 +62,7 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
     quarters=True, also the points each team scored in each regulation quarter (rows, n, 4, 2), credited to the
     quarter in which the scoring snap started (overtime points count in pts, in no quarter).
 
-    audit (a dict, filled in place): clock checks — "used" and "n", (11, 10) arrays of game seconds used and
+    audit (a dict, filled in place): clock checks — "used" and "n", (11, clock phases) arrays of game seconds used and
     snaps by play category (tables.CATS) x clock phase (tables.c_bin), "gain" (11) yards gained by category, and
     "snaps", "changes": per game (rows, n)
     counts of snaps (plays from scrimmage) and changes of possession.
@@ -199,7 +199,7 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
         y, dn, tg, ck = yl[a], down[a], togo[a], clock[a]
         d, t, z, zg = dn - 1, T.t_bin(tg), T.z_bin(y), T.zg_bin(y)
         c, s, s3 = T.c_bin(ck), T.s_bin(mg), T.s3_bin(mg)
-        pc = tb.call.probs[tb.call.cell(d=d, t=t, z=z, zc=T.zc_bin(y), c=c, s=s)].copy()
+        pc = tb.call.probs[tb.call.cell(d=d, t=t, z=z, zc=T.zc_bin(y), c=c, s=s, tlo=tl[a, p])].astype(float)
         late = (ck <= LATE) & ~ot[a]
         lead, trail = late & (mg >= 1) & (mg <= 16), late & (mg <= -1) & (mg >= -16)
         lean = np.exp(tp["pass"][ra, p] + np.where(lead, tp["lead_pass"][ra, p], 0.0)
@@ -409,7 +409,7 @@ def simulate(tb: T.Tables, start: pd.DataFrame, n: int, seed: int = 0, max_steps
         nc[half] = 1800
         if audit is not None:
             if not audit:
-                audit.update(used=np.zeros((len(T.CATS), 10)), n=np.zeros((len(T.CATS), 10)),
+                audit.update(used=np.zeros((len(T.CATS), T.DIMS["c"])), n=np.zeros((len(T.CATS), T.DIMS["c"])),
                              gain=np.zeros(len(T.CATS)), snaps=np.zeros(r * n), changes=np.zeros(r * n))
             np.add.at(audit["gain"], cat, gain)
             if "fourth" not in audit:

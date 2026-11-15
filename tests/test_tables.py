@@ -23,7 +23,7 @@ def test_fourth_down_kicks_in_range_and_punts_beyond():
 
     def call(yl):  # 4th and 5, 2nd quarter, tied
         return tb.call.probs[tb.call.cell(d=3, t=T.t_bin(5), z=T.z_bin(yl), zc=T.zc_bin(yl), c=T.c_bin(2500),
-                                          s=T.s_bin(0))]
+                                          s=T.s_bin(0), tlo=3)]
 
     assert call(36)[fg] > call(36)[punt]   # a 54-yard try
     assert call(44)[punt] > 10 * call(44)[fg]   # a 62-yard try
@@ -38,7 +38,7 @@ def test_late_leads_run_and_late_deficits_pass():
 
     def pass_share(margin):  # 1st and 10 at midfield, 2-5 minutes left
         p = tb.call.probs[tb.call.cell(d=0, t=T.t_bin(10), z=T.z_bin(50), zc=T.zc_bin(50), c=T.c_bin(200),
-                                       s=T.s_bin(margin))]
+                                       s=T.s_bin(margin), tlo=3)]
         return p[0] / (p[0] + p[1])
 
     assert pass_share(-12) > 0.8 and pass_share(10) < 0.2   # real teams: 91% and 7%
@@ -91,6 +91,37 @@ def test_season_weights_halve_per_half_life_and_average_one():
         assert np.allclose(T.season_weights(np.array([2020, 2024])), 1.0)
     finally:
         T.SEASON_HALF_LIFE = old
+
+
+def test_fourth_quarter_clock_splits_nest_in_the_coarse_phase():
+    old = list(T.Q4_SPLITS)
+    try:
+        T.set_clock_bins([600, 450])
+        c = T.c_bin(np.array([800, 600, 500, 450, 301, 300, 2000, 100]))
+        assert list(c[:5]) == [3, 10, 10, 11, 11] and c[5] == 4 and c[6] == 0 and c[7] == 5
+        assert T.DIMS["c"] == 12 and list(T.DERIVED["c4"][1][[3, 10, 11]]) == [3, 3, 3]
+        T.set_clock_bins([])
+        assert T.c_bin(500) == 3 and T.DIMS["c"] == 10
+    finally:
+        T.set_clock_bins(old)
+
+
+def test_early_down_calls_follow_score_and_clock_together():
+    import pandas as pd
+
+    rng = np.random.default_rng(0)
+    n = 6000
+    df = pd.DataFrame({"d": rng.integers(0, 3, n), "t": rng.integers(0, 5, n), "zc": rng.integers(0, 16, n),
+                       "c": rng.choice([3, 4], n), "s": rng.choice([1, 4], n), "tlo": rng.integers(0, 4, n)})
+    df["z"] = T.z_bin(np.array(T.ZC_EDGES + [99]))[df.zc]
+    # trailing by 9-16 (s=1) passes far more in the last 5:00 (c=4) than earlier; tied (s=4) doesn't change
+    p = np.where(df.s == 1, np.where(df.c == 4, 0.9, 0.6), 0.5)
+    df["call"] = np.where(rng.random(n) < p, "pass", "run")
+    tb = T.early_down_calls(df)
+    pr = tb.probs[tb.cell(d=1, t=3, z=4, zc=T.zc_bin(45), c=np.array([3, 4, 3, 4]), s=np.array([1, 1, 4, 4]), tlo=2)]
+    share = pr[:, 0] / (pr[:, 0] + pr[:, 1])
+    assert np.allclose(pr.sum(1), 1, atol=1e-5)
+    assert share[1] > share[0] + 0.15 and abs(share[3] - share[2]) < 0.1
 
 
 def test_fine_score_bins_split_one_score_games_at_three():
