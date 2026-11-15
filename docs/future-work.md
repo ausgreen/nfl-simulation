@@ -67,7 +67,6 @@ every completion (multiplier ~0.92-0.94), which is part of why completion and sa
 - Rating the league's drift on its own, so offense and defense ratings don't both carry it: no effect (summed pace
   ratings within 0.05 s either way), reverted. Team pace ratings already absorb part of the slowdown during a season
   (+0.2 s early, +0.6 s late in 2025).
-
 - Recency-weighted tables (2026-11-14; half-life 2 seasons, `tables.SEASON_HALF_LIFE`), backtested on 2023-24: QB
   lines and totals a little better, win chances before the 4th quarter a little worse, held-out play-call log loss
   worse. Left off; the switch stays in the code.
