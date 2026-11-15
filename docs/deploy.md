@@ -81,6 +81,14 @@ deploy the site itself returns 404, because the bucket is empty.
 3. Optional: **Firewalls → Create firewall** with one inbound rule (TCP 22) and apply it to the server. The server
    also runs its own firewall (ufw) with the same rule.
 4. Wait ~3 minutes for cloud-init, then check: `ssh deploy@<server-ip> docker version`.
+5. Add 2 GB of swap (added 2026-11-15). The simulator's set-up rebuild peaks at ~2.8 GB, inside a worker that already
+   holds ~1-1.6 GB, and the 4 GB server has no swap by default:
+
+   ```sh
+   ssh deploy@<server-ip> 'sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile &&
+     sudo swapon /swapfile && echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab &&
+     echo vm.swappiness=10 | sudo tee /etc/sysctl.d/99-swappiness.conf && sudo sysctl -p /etc/sysctl.d/99-swappiness.conf'
+   ```
 
 ## 6. Deploy
 
