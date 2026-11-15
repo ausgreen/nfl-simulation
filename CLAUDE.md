@@ -98,21 +98,23 @@ calibration) -> vectorized simulation from any game state -> CLI replay or live 
 Modeled since 2026-10-16: accepted penalties that wipe out the play, timeouts, two-minute warnings, overtime (NFL rules
 since 2025: each team's possession, then the next score wins; the live app reads which teams have had theirs from the drives), strip-sack and return fumbles, return TDs,
 two-point tries and onside kicks (decisions learned by score and clock), score effects on pass results and gains.
-4th-down calls are a logistic regression (`tables.fourth_down_calls`); other calls a product of smoothed tables.
+4th-down calls are a logistic regression (`tables.fourth_down_calls`); calls on downs 1-3 another, on joint one-hot
+terms of score, clock, down, distance, field position and the offense's timeouts (`tables.early_down_calls`).
 Head coaches' end-of-game habits (`sim/coaches.py`, fit on the 10 seasons before the simulated one, shrunk to the
 league): pass rate leading / trailing by 1-16 in the last 5:00, the defense's timeouts then, starters pulled in 4th-
 quarter blowouts; engine columns `lead_pass`/`trail_pass`/`def_to`/`pull`, coaches from schedules.csv. 2025 backtest
 (272 games, Q4 states): QB-line Brier better in 92% of game resamples (mostly blowouts), win Brier in 85%; small gains,
 and they don't fix the late-game win overconfidence.
 Not modeled: penalties on plays that stand. The final score includes overtime; the
-quarter projections are regulation only. Regulation ends tied less often than real games do (4.6% vs 5.8%, 2023-26). Win
-chances are still somewhat overconfident in the 4th quarter (2025-26: 100 losses by favorites at 0.8+ at Q4
-checkpoints where 78 were expected).
-Score bins split one-score games at 3 points (9 bins, `tables.set_score_bins`; game-script gains, pass-result score
-effects and 4th-down interactions use them): see `docs/model-improvements.md` for that pass (v3 unchanged: no
-feature tried beat noise) and `experiments/model_improve/` for the season backtest harness (`backtest.py`,
-`compare.py`, `reliability.py`). `tables.SEASON_HALF_LIFE` (recency-weighted tables) and `tables.ELAPSED_BY_SCORE`
-were tried and are off.
+quarter projections are regulation only. Regulation ends tied less often than real games do (4.6% vs 5.8%, 2023-26).
+4th-quarter win chances: pooled 2023-26, favorites at 0.8+ at Q4 checkpoints lost 190.5 times where 186 were expected
+(2025 alone +16, 2024 -20); simulated team scores are negatively correlated (real: positive), so pregame win chances
+are a little timid.
+Score bins split one-score games at 3 points (9 bins, `tables.set_score_bins`); the 4th quarter's 15:00-5:00 is three
+clock phases (`tables.set_clock_bins`); the clock to the next snap is keyed by score (`ELAPSED_BY_SCORE`). See
+`docs/model-improvements.md` for both improvement passes (v3 unchanged: no feature tried beat noise) and
+`experiments/model_improve/` for the season backtest harness (`backtest.py`, `compare.py`, `reliability.py`,
+`upsets.py`). `tables.SEASON_HALF_LIFE` and `teams.ANCHOR_LINE_BIAS` were tried and are off.
 
 ## Caches (`data/live/`, gitignored except `wf_rows.parquet`)
 

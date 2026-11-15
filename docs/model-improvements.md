@@ -1,7 +1,11 @@
 # Model improvements (branch `model-improve`, 2026-11-14)
 
-A pass over the QB passing-yards model (v3) and the play-by-play simulator, measured on held-out seasons. One change
-was kept (finer score bins in the simulator's tables); everything else tried is recorded here with its numbers.
+Two passes over the QB passing-yards model (v3) and the play-by-play simulator, measured on held-out seasons.
+- **First pass:** kept finer score bins in the simulator's tables.
+- **Second pass, aimed at 4th-quarter overconfidence:** kept 4th-quarter clock phases, a logistic play-call model
+  and the clock by score.
+
+v3 is unchanged. Everything tried is recorded here with its numbers; the final table is under "Final vs baseline".
 
 ## Protocol
 
@@ -150,45 +154,190 @@ Against Kalshi (2026 weeks 9-10, 509 quotes on lines that are multiples of 25): 
   score chain): held-out call log loss worse (0.77195 -> 0.77901, 0.78570): the product of chains double-counts
   distance. Reverted.
 
+## Second pass: 4th-quarter overconfidence
+
+Arm labels below are `experiments/model_improve/backtest.py` VARIANTS: `coarse` = master before this branch,
+`fine` = after the first pass, `q4lr` and `q4lre` = this pass. Same seeds, games and checkpoints throughout.
+
+### Diagnosis: teams down 9-16 in the last 8:00
+
+Each real 2023-24 snap simulated one step (and each drive to its end) from its exact state, with the game's anchored
+engine parameters (`anchor_save.py`, then `snaps.py` / `drives.py` with `AN=1`). Teams down 9-16 in the last 8:00,
+`fine`:
+
+| | Real | Sim |
+|---|---|---|
+| Pass rate, downs 1 / 2 / 3 | 81.7% / 80.2% / 75.7% | 73.1% / 74.8% / 74.5% |
+| First-down rate per snap | 28.2% | 25.1% |
+| Seconds between snaps (no timeout) | 15.5 | 16.9 |
+| Sacks per snap | 6.7% | 5.5% |
+| 4th down: punt / first down or TD | 6.3% / 31.7% | 11.4% / 19.7% |
+| Drives (n = 218): TD / FG / punt / downs | 28.0% / 11.5% / 3.2% / 23.4% | 21.3% / 8.5% / 7.3% / 27.5% |
+| Net points per drive | 2.28 | 1.56 |
+
+Per play, the tables themselves were right for this group: with no team effects, completion rate on passes (54-59%
+real vs 58-59% table), gains past the line to gain on completions (52% vs 53-54%) and run conversion (42% vs 40%) match.
+What was off is the calls and the clock, and both trace to **one clock phase covering the 4th quarter's 15:00-5:00**:
+inside it, real teams down 9-16 pass 65% of early downs at 15:00-12:30 and 80% at 8:00-5:00, and snap every 35.1 s
+then 29.7 s (2019-24). Teams up 9-16 go the other way: 50% passes falling to 36%, and 38.7 s rising to 41.5 s
+between snaps. The call table and the clock table each saw only the phase average. Late in that phase the trailing
+team passed too little and played too slowly, and the leader ran too little clock.
+
+### Tried in this pass
+
+1. **4th-quarter clock phases** (`tables.set_clock_bins([600, 450])`: 15:00-10:00, 10:00-7:30, 7:30-5:00), alone
+   (`q4`), dev 2023-24 vs `fine`: neutral (win in-game 0.10519 -> 0.10522, 44%; totals in the last 5:00 worse, 1%).
+   Not kept alone; it is the basis of 2 and 3.
+2. **Logistic play-call model** (`tables.early_down_calls`, `CALL_MODEL = "lr"`), the next step proposed in the first
+   pass. It is a multinomial logistic regression on downs 1-3 with joint one-hot terms, and it replaces the product
+   of smoothed tables. The terms:
+   - down x distance, down x field position, distance x field position;
+   - down x clock, field position x clock, clock x score;
+   - down x coarse clock x score, distance x coarse clock x score;
+   - clock x offense timeouts, clock x coarse score x offense timeouts.
+
+   The call grid gains the offense's timeouts. Held-out log loss of all calls (with the clock phases):
+   0.77195 -> 0.76263 (2023-24) and 0.78460 -> 0.77437 (2025-26). Adding down x distance x field position was no
+   better (downs 1-3: 0.78918 vs 0.78930); C = 0.3. Pass rate of teams down 9-16 in the last 8:00:
+   72.5% -> 75.4% (real 77.2%); leaders up 9+: 20.8% -> 16.7% (real 16.4%). Per-drive points barely moved (1.51 -> 1.54
+   without anchoring).
+3. **Clock by score** (`ELAPSED_BY_SCORE`), which the first pass tried on the single phase and dropped, now with the
+   finer phases. Seconds between snaps, down 9-16 in the last 8:00: 16.9 -> 15.2 (real 15.5).
+4. **Line bias in the anchor** (`teams.ANCHOR_LINE_BIAS`: aim each team's mean points at its implied points plus the
+   training seasons' average miss, since closing lines sit near the median score). Dev 2023-24 vs `q4lr`: pregame
+   spread worse (0.24911 -> 0.25085, better in 2%), total unchanged. Not kept.
+5. **4th-down model with the same joint terms** (timeouts included): held-out log loss worse than the current one
+   (0.5670 at C = 0.3, 0.5799 at C = 1.0, against 0.5546). Not kept. Its late punts (10.0% predicted vs 6.5% real, down
+   9-16 in the last 8:00) reflect the training seasons' lower go rates (see next steps).
+
+Backtests (Brier, "better in" = share of 2,000 game resamples):
+
+| `q4lr` vs `fine` | Dev 2023-24 | Test 2025 | Test 2026 wk 1-10 |
+|---|---|---|---|
+| Win, in-game | 0.10519 -> 0.10516 (54%) | 0.11623 -> 0.11644 (26%) | 0.11777 -> 0.11784 (47%) |
+| Spread, in-game | 0.10303 -> 0.10279 (86%) | 0.11614 -> 0.11629 (32%) | 0.12485 -> 0.12479 (57%) |
+| Total, in-game | 0.10907 -> 0.10883 (86%) | 0.10809 -> 0.10811 (48%) | 0.12528 -> 0.12536 (46%) |
+| QB lines, Q4 15:00-5:00 | 0.07318 -> 0.07311 (65%) | 0.06798 -> 0.06749 (98%) | 0.07349 -> 0.07281 (98%) |
+| QB lines, pregame | 0.12689 -> 0.12695 (36%) | 0.11895 -> 0.11929 (6%) | 0.12427 -> 0.12418 (61%) |
+| Win, pregame | 0.21188 -> 0.21123 (84%) | 0.21235 -> 0.21111 (90%) | 0.21625 -> 0.21548 (69%) |
+
+| `q4lre` vs `q4lr` | Dev 2023-24 | Test 2025-26 | All 2023-26 |
+|---|---|---|---|
+| Win, in-game | 0.10516 -> 0.10516 (52%) | 0.11691 -> 0.11662 (87%) | 0.11021 -> 0.11008 (76%) |
+| Spread, in-game | 0.10279 -> 0.10293 (28%) | 0.11907 -> 0.11839 (99.4%) | 0.10984 -> 0.10963 (88%) |
+| Total, in-game | 0.10883 -> 0.10889 (37%) | 0.11390 -> 0.11383 (63%) | 0.11102 -> 0.11103 (47%) |
+| QB lines, in-game | 0.07123 -> 0.07109 (99%) | 0.06788 -> 0.06789 (46%) | 0.06976 -> 0.06969 (95%) |
+| QB lines, pregame | 0.12695 -> 0.12669 (94%) | 0.12093 -> 0.12120 (7%) | 0.12436 -> 0.12434 (60%) |
+
+Kept: 1 + 2 + 3 (`q4lre`, now the code's default; a re-run reproduces it exactly).
+- The call model is kept on its held-out likelihood, which improved in both test periods, and on 4th-quarter QB
+  lines, better in 98% of resamples in 2025 and again in 2026.
+- Clock by score is kept because its held-out clock residuals are right by score and the pooled backtest favors it.
+
+Caveats:
+- On development seasons `q4lre`'s gain was in QB lines; on the test seasons it was in win and spread chances. No
+  single market improved in every period.
+- Clock by score had already been tried on 2025-26 in the first pass, so this second look at the same test seasons is
+  not a clean test of it. 2026 alone is neutral (win 51%, spread 72%, total 74%, QB lines 42%).
+- Pregame QB lines got worse on 2025 (0.11895 -> 0.11929). The line-by-line calibration is unchanged, and over
+  2023-26 pooled the difference is 0.00009 (better in 24%).
+
+### Is the Q4 overconfidence real?
+
+This counts every 4th-quarter checkpoint where the favorite had 0.8 or more, with a 90% interval of the excess from game
+resamples (`experiments/model_improve/upsets.py`):
+
+| Season | `coarse`: losses / expected | Excess (90%) | Final `q4lre`: losses / expected | Excess (90%) |
+|---|---|---|---|---|
+| 2023 | 67.0 / 57.2 | +9.8 (-9.7 .. 31.0) | 59.0 / 58.5 | +0.6 (-17.0 .. 20.0) |
+| 2024 | 32.0 / 50.7 | -18.7 (-33.2 .. -3.5) | 32.0 / 52.2 | -20.2 (-34.6 .. -4.8) |
+| 2025 | 73.0 / 49.9 | +23.1 (0.1 .. 48.8) | 65.0 / 48.5 | +16.5 (-4.5 .. 39.1) |
+| 2026 wk 1-10 | 35.0 / 27.1 | +7.9 (-9.3 .. 25.5) | 34.5 / 27.0 | +7.5 (-7.8 .. 25.1) |
+| 2023-26 | 207.0 / 184.9 | +22.1 (-15.6 .. 62.8) | 190.5 / 186.1 | +4.4 (-31.3 .. 43.1) |
+
+The first pass's "100 vs 78" was mostly 2025. In 2024 the model was *under*confident. Pooled over four seasons, the
+excess went from +22 to +4, well inside its interval. Checkpoints within a game share one outcome, so these counts
+are far noisier than they look: one game's comeback adds up to 7 losses.
+
+### Pregame: what the first pass's "regression" was
+
+- **Noise, not a defect.** The closing line sits at the median, so the simulated P(cover) and P(over) are 0.50 +- 0.02
+  (sd over games). Their Brier differences of 0.001-0.002 between arms are noise around a coin flip, and the arms swap
+  places between seasons. `fine` was worse than `coarse` on 2025-26 pregame spread; `q4lre` is better than both
+  (0.24960 -> 0.24809, better in 95%).
+- **A real, older issue: pregame win chances are too timid.** The real home-win rate rises with the spread as if
+  final margins were spread about 11 points around it; the simulator's chances imply about 14.
+- **Its cause: the two teams' scores are correlated the wrong way.** In the simulator they are *negatively*
+  correlated (-0.12 for neutral teams, 2024 tables); in real games, positively (+0.08 in games with a spread of 3 or
+  less, 2019-23). Per team the variance is about right (sd 9.5 vs 9.4-9.7 real).
+- Real scores correlate through shared conditions and catch-up. In real games the Q4 margin pulls back toward zero
+  against the Q1-3 margin with slope -0.064; in the simulator, -0.047.
+- **Why there's no quick fix.** A shared game shock can't fix this (it only adds variance), and pseudo-count or
+  smoothing changes don't touch it. The trailing team's catch-up, which the changes above partly fix, is the lever.
+  Not fixed here: see next steps.
+
 ## Final vs baseline
 
-Kept: the data refresh and the finer score bins. v3 unchanged.
+Kept over the branch: the data refresh, finer score bins, 4th-quarter clock phases, the logistic play-call model and
+the clock by score. v3 unchanged.
 
-| | Baseline | Final | |
+| | Baseline (`coarse`) | Final (`q4lre`) | Better in |
 |---|---|---|---|
 | v3 CRPS, test 2024-25 / 2026 | 41.03 / 41.72 | same | no v3 change |
-| Sim win Brier in-game, 2025-26 | 0.11735 | 0.11675 | better in 97% |
-| Sim total Brier in-game, 2025-26 | 0.11501 | 0.11386 | better in 99.7% |
-| Sim QB lines in-game, 2025-26 | 0.06805 | 0.06798 | better in 77% |
-| Sim QB lines pregame, 2025-26 | 0.12092 | 0.12073 | better in 84% |
-| Sim spread pregame, 2025-26 | 0.24960 | 0.25119 | worse (better in 6%) |
+| Win, in-game, test 2025-26 | 0.11735 | 0.11662 | 99% |
+| Win, Q4 15:00-5:00, test 2025-26 | 0.11565 | 0.11484 | 96% |
+| Spread, in-game, test 2025-26 | 0.11916 | 0.11839 | 94% |
+| Total, in-game, test 2025-26 | 0.11501 | 0.11383 | 99% |
+| QB lines, in-game, test 2025-26 | 0.06805 | 0.06789 | 89% |
+| QB lines, Q4 15:00-5:00, test 2025-26 | 0.06983 | 0.06930 | 99% |
+| QB lines, pregame, test 2025-26 | 0.12092 | 0.12120 | 8% (worse) |
+| Win, pregame, test 2025-26 | 0.21355 | 0.21236 | 94% |
+| Spread, pregame, test 2025-26 | 0.24960 | 0.24809 | 95% |
+| Total, pregame, test 2025-26 | 0.25009 | 0.25157 | 6% (worse) |
+| Dev 2023-24: win / total / QB lines, in-game | 0.10511 / 0.10920 / 0.07128 | 0.10516 / 0.10889 / 0.07109 | 42% / 73% / 97% |
+| Play-call log loss, held-out 2023-24 | 0.77329 | 0.76263 | |
 | Regulation ties, 2023-26 (real 5.8%) | 3.6% | 4.6% | |
-| Q4 favorites >= 0.8, 2025-26: losses vs expected | 105 vs 77 | 100 vs 78 | still overconfident |
+| Q4 favorites at 0.8+, 2023-26: losses vs expected | 207 vs 185 | 190.5 vs 186 | |
+| Down 9-16, last 8:00: pass rate / s per snap / pts per drive (real 77% / 15.5 / 2.28) | 72% / 16.9 / 1.51* | 75% / 15.2 / 1.58* | |
 | Kalshi weeks 9-10 QB Brier (Kalshi 0.1600) | 0.1640 | 0.1642 | |
 
-These are small gains. The model was near its floor on the public data before this pass, and it still is.
+\* Without anchoring (QB multipliers from v3, no efficiency anchor). With the anchor, `fine` gave 1.56.
+
+**Verdict on the Q4 gap.** The 4th-quarter overconfidence is substantially closed on held-out data:
+- Over the four seasons, the favorites' excess losses went from +22 to +4 (of ~186 expected), inside a 90% interval
+  of -31 to +43.
+- In-game win Brier on the test seasons improved in 99% of game resamples.
+- Most of what was left in 2025 is that season's noise; 2024 had the opposite sign.
+
+What is not closed is at the drive level. Teams down 9-16 late still score 0.7 points per drive less than real ones.
+The gap now comes from 4th downs (punts 7% vs 3%, turnovers on downs 29% vs 23%) and a lower first-down rate per snap
+(25% vs 28%), not from calls or the clock.
 
 ## Remaining weaknesses and next steps
 
-1. **4th-quarter overconfidence remains** (2025-26: 100 losses where 78 were expected among Q4 favorites at 0.8+).
-   The drive comparison still shows teams down 9-16 in the last 10:00 scoring 0.7 points per drive more in real games
-   than in the simulator (TD 28% vs 22%, 2023-24, se 0.19). Their play calls pass 2-3 points less than real teams in
-   the 4th quarter's 15:00-5:00 (the call table's score effect is a little weak there) and they convert 4-5 points
-   fewer first downs on 2nd and 3rd down. Next: a call model that learns the score x clock x down interaction
-   directly (like the 4th-down logistic regression) instead of a product of smoothed tables.
-2. **League trends** (fewer snaps, more 4th-down tries until 2025, the 2025 kickoff rule adding ~2.5 s after every
-   score) are only followed through the team ratings. 2026 partly reversed 2025 (4th-down go rate 21.6% -> 18.3%,
-   snaps 121.8 -> 123.2), so extrapolating a trend would have hurt; recency weighting did not clearly help.
-3. **v3** needs new information, not new transforms of the same data: injury reports (receivers, linemen), snap
-   counts of the receiving corps, or market lines for the QB's own yards (Kalshi history only starts 2026-10-18; once a
-   season of closing prices exists, they are the strongest candidate feature).
-4. **Pregame spread/total** got slightly worse with the change; worth re-measuring after a full season of 2026.
+1. **Late 4th downs of trailing teams.** The 4th-down model learns the 5 training seasons' average, and go rates rose
+   through 2025 (all 4th downs: 12% in 2016, 22% in 2025, 18% in 2026), so trailing teams punt late about twice as
+   often as real ones. The joint-terms regression was worse on held-out log loss. It needs more data per cell, or a
+   trend term that survives 2026's reversal.
+2. **Score correlation.** Simulated team scores are negatively correlated and real ones positively. This widens
+   pregame margins (win chances too timid: implied spread ~14 vs ~11), and it was the larger pregame issue all along.
+3. **Scrambles are runs.** nflverse labels scrambles as runs, so the simulator draws them from run gains (2018-22:
+   designed runs average 4.4 yards, scrambles 7.3). For teams down 9-16 late, 31% of "runs" are scrambles (8.7 yards,
+   56% first downs). Modeling a scramble as a dropback outcome is the general fix. That group's overall run
+   conversion is already right (42% vs 40%), so the gain is small.
+4. **League trends** (fewer snaps, 4th-down aggressiveness, the 2025 kickoff rule) are followed only through team
+   ratings.
+5. **v3** needs new information (injuries, receivers, a season of Kalshi closing prices), not new transforms.
 
 ## Shipping notes (live app / worker)
 
-- No interface changes: engine columns, `Setup`, states and the pages are unchanged.
-- `sim_setup_<season>.pkl` rebuilds by itself (the cache key hashes `tables.py`), ~15-45 s per season the first time.
-- `tables.set_score_bins(False)` and `SEASON_HALF_LIFE` / `ELAPSED_BY_SCORE` are module switches for experiments;
-  changing them at run time after a set-up is cached would mismatch the cached tables, so the live app must not.
+- No interface changes: engine columns, `Setup`, states and the pages are unchanged. The engine now looks up the play
+  call with the offense's timeouts, which every start state already carries (`to0` / `to1`, default 3).
+- `sim_setup_<season>.pkl` rebuilds by itself, because the cache key hashes `tables.py`. It grows from ~27 MB to
+  ~50 MB (the call grid has the timeouts key, stored as float32), and each worker process loads it.
+- `tables.set_score_bins`, `set_clock_bins`, `CALL_MODEL`, `ELAPSED_BY_SCORE`, `SEASON_HALF_LIFE` and
+  `teams.ANCHOR_LINE_BIAS` are module switches for experiments. Changing them at run time after a set-up is cached
+  mismatches the cached tables, so the live app must not.
 - The engine's `record=True` output also returns `timeouts` (left per team); existing callers ignore it.
-- The data refresh (through week 10) is committed; the server refreshes its own data daily anyway.
+- `uv run pytest` passes (65 tests, slow ones included).
+

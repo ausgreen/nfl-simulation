@@ -80,16 +80,35 @@ log loss worse; left off. Also seen: since the 2025 kickoff rule the clock after
 
 ## Late deficits: teams down 9-16 still score too little
 
-Measured 2026-11-14 (docs/model-improvements.md), after the finer score bins.
+Measured 2026-11-14 (docs/model-improvements.md, second pass).
 
-**Finding.** Simulating every real 2023-24 drive from its start, teams down 9-16 with 10:00 or less left scored 0.7
-points per drive more in real games (TD 28% vs 22%, n = 264, se 0.19). Snap by snap in the 4th quarter they pass 2-3
-points less than real teams on downs 1-3 (table 77-78% vs real 79-80%) and convert 4-5 points fewer first downs on
-2nd and 3rd down; completion gains per catch are right (10.9 real vs 10.7). In the 4th quarter's 15:00-5:00 real teams
-down 9-16 also snap every 33.0 s against 36.9 s down 1-3, which the clock table (keyed trailing / tied / leading)
-pools; keying it by score (`tables.ELAPSED_BY_SCORE`) fixed the clock residuals but gave mixed backtest results
-(QB lines worse before the 4th quarter in 2025-26) and is off.
+**Built since.** The calls and the clock were the first cause: the 4th quarter's 15:00-5:00 was one clock phase,
+though real trailing teams pass and hurry more and more within it. The phase is now split at 10:00 and 7:30, calls
+on downs 1-3 come from a logistic regression (score x clock x down x distance, timeouts), and the clock is keyed by
+score. For teams down 9-16 in the last 8:00: pass rate 72% -> 75% (real 77%), 16.9 s -> 15.2 s between snaps (real
+15.5). 4th-quarter favorites' excess losses over 2023-26: +22 -> +4 of ~186 expected.
 
-**Why it waits.** Adding distance or field position to the call table's score chain made held-out call log loss
-worse (the product of chains double-counts). The general fix is a call model fit on score x clock x down x distance
-together (a logistic regression like the 4th-down one), not a rule for trailing teams.
+**Still open.** Those teams' drives still score about 0.7 points less than real ones (TD 21% vs 28%, 218 drives
+2023-24). The remaining gap is in:
+- **4th downs.** They punt 7% of drives vs 3% real, and turn it over on downs 29% vs 23%. The 4th-down model learns
+  the training seasons' lower go rates (all 4th downs: 12% in 2016, 22% in 2025, 18% in 2026). The same joint-terms
+  regression was worse on held-out log loss (0.567 vs 0.555).
+- **First downs.** They convert fewer per snap: 25% vs 28%.
+
+Per play, completions, gains past the sticks and runs are right for this group when team effects are off.
+
+**Scrambles.** nflverse labels scrambles as runs, so the simulator draws them from run gains. Designed runs average
+4.4 yards and scrambles 7.3 (2018-22). For teams down 9-16 late, 31% of "runs" are scrambles (8.7 yards, 56% first
+downs), yet their overall run conversion is right (42% vs 40%). The general fix is a dropback outcome "scramble" with
+its own gains. It is a modest gain for a change that touches the engine's events and the team ratings.
+
+## Score correlation between the teams
+
+Measured 2026-11-14. Simulated team scores are negatively correlated (-0.12, neutral teams, 2024 tables); real ones
+positively (+0.08 in games with a spread of 3 or less, 2019-23). Per team the variance is right (sd 9.5 vs 9.4-9.7).
+The margin is therefore too spread out pregame: win chances imply a margin spread of ~14 points around the spread,
+real outcomes ~11.
+
+Real catch-up is stronger: the Q4 margin pulls back toward zero against the Q1-3 margin with slope -0.064 real,
+-0.047 simulated. A shared efficiency shock for both teams would only add variance. The fix has to come from game
+dynamics: catch-up efficiency, and leaders easing off.
