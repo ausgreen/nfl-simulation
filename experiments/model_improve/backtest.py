@@ -29,11 +29,15 @@ from nflsim.sim import data as D, engine as E, pregame as PG, states as SS
 OUT = Path("data/live/analysis/model_improve/bt")
 # code variants by label (T = nflsim.sim.tables, E = engine, TM = teams): exec'd before the season is set up
 VARIANTS = {
-    "fine": "",                                   # the current code (fine score bins are the default)
-    "coarse": "T.set_score_bins(False)",          # the code before this branch ("base" in the first runs)
-    "hl2": "T.set_score_bins(False); T.SEASON_HALF_LIFE = 2.0",   # recency weights, tried on the coarse bins
-    "fine_hl2": "T.SEASON_HALF_LIFE = 2.0",
-    "elt": "T.ELAPSED_BY_SCORE = True",
+    # each label sets everything it needs, since the code's defaults changed as changes were kept
+    "coarse": "T.set_score_bins(False); T.set_clock_bins([]); T.CALL_MODEL = 'table'; T.ELAPSED_BY_SCORE = False",  # master
+    "fine": "T.set_clock_bins([]); T.CALL_MODEL = 'table'; T.ELAPSED_BY_SCORE = False",   # + finer score bins (kept)
+    "hl2": "T.set_score_bins(False); T.set_clock_bins([]); T.CALL_MODEL = 'table'; T.ELAPSED_BY_SCORE = False; T.SEASON_HALF_LIFE = 2.0",
+    "elt": "T.set_clock_bins([]); T.CALL_MODEL = 'table'; T.ELAPSED_BY_SCORE = True",
+    "q4": "T.CALL_MODEL = 'table'; T.ELAPSED_BY_SCORE = False",        # + 4th-quarter clock splits only
+    "q4lr": "T.ELAPSED_BY_SCORE = False",                               # + call model (kept)
+    "q4lre": "",                                                        # + clock by score (kept): the current code
+    "lb": "T.ELAPSED_BY_SCORE = False; TM.ANCHOR_LINE_BIAS = True",   # on top of q4lr
 }
 CHECK = (2700, 1800, 1200, 900, 600, 420, 300, 180, 120, 60)
 
