@@ -38,3 +38,6 @@ recordings/
 
 # Worker output (nflsim worker --out site)
 site/
+
+# Claude Code agent worktrees
+.claude/worktrees/
