@@ -9,3 +9,4 @@ recordings/
 site/
 data/live/
 secrets/
+.review/
