@@ -553,6 +553,30 @@ def serve(port: int = 8765, ds: Dataset | None = None, feed: str = "kalshi") -> 
     prices = {"at": 0.0, "data": {}, "every": 1.0 if book else 5.0}
     series = Series()  # while a page is open: the states computed for it and the prices fetched
 
+    def refresh_preds(every: float = 3 * 3600):
+        """As the hosted worker does: each week's pregame expectations are recomputed soon after the week is first
+        used and then every `every` seconds while a game is still to start, so a QB Kalshi lists after the week's
+        file was written (the starter it names wins over the hand-kept roster) replaces the roster's pick. Games under
+        way keep their numbers."""
+        done: dict[tuple, float] = {}
+        while True:
+            time.sleep(60)
+            for key in [k for k in list(model.week_preds) if time.monotonic() - done.get(k, -every) >= every]:
+                done[key] = time.monotonic()
+                try:
+                    games = espn.games()
+                    if not any(g["state"] == "pre" for g in games):
+                        continue
+                    frozen = {t for g in games if g["state"] != "pre" for t in (g["home"], g["away"])}
+                    changed = model.update_preds(*key, model.compute_preds(*key), frozen)
+                    if changed:
+                        states.clear()  # their states were simulated with the old numbers
+                        print(f"Week {key[1]} expectations updated: {', '.join(sorted(changed))}")
+                except Exception as e:  # the current numbers stand; tried again next time
+                    print(f"Week {key[1]} expectations: {type(e).__name__}: {e}")
+
+    threading.Thread(target=refresh_preds, daemon=True).start()
+
     def card(g, out):
         c = summary(out, g)
         series.add_state(time.time(), c)

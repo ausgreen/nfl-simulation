@@ -123,7 +123,8 @@ clock phases (`tables.set_clock_bins`); the clock to the next snap is keyed by s
 - `live_v3_<season>_wNN.parquet` (weekly v3 predictions) is computed the first time a week is used. The hosted worker
   recomputes it every 3 h while a game is still to start (`LiveModel.update_preds`; games under way keep their
   numbers) and re-downloads stats, schedules and pbp daily when no game is on (`Worker.refresh`); status.json's `data`
-  has both times. The local app does neither: delete the file (or run `nflsim fetch`) to recompute.
+  has both times. The local app recomputes it too (a minute after the week is first used, then every 3 h while a game is to
+  start), but doesn't re-download data: run `nflsim fetch` for that.
 - `wf_rows.parquet` has no generator in this repo (copied from floormodel); don't delete it.
 
 `data/curated/roster.csv` (expected starters, preferred by the live app) and `venues.csv` are maintained by hand.

@@ -70,6 +70,11 @@ details.play[hidden] { display: none; }
   margin-bottom: -1px; font-weight: 600; color: var(--ink-2); }
 .mkt-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
 .markets [hidden], .markets[hidden] { display: none; }
+.mkt-tabs .side { margin-left: auto; align-self: center; display: inline-flex; gap: 0; }
+.mkt-tabs .side button { border: 1px solid var(--rule); border-radius: 0; background: var(--surface); padding: 3px 12px; margin: 0; font-size: 13px; color: var(--ink-2); font-weight: 600; }
+.mkt-tabs .side button:first-child { border-radius: 999px 0 0 999px; }
+.mkt-tabs .side button:last-child { border-radius: 0 999px 999px 0; border-left: 0; }
+.mkt-tabs .side button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
 .qbs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 14px; }
 .qb h3 { margin: 0; font-size: 16px; }
 .qb .sub { color: var(--ink-2); margin: 2px 0 8px; }
@@ -91,15 +96,16 @@ details.play[hidden] { display: none; }
   <section class="panel" id="head" aria-live="polite"><span class="muted">Pick a game.</span></section>
 
   <section class="markets" id="markets" hidden>
-    <div class="mkt-tabs" id="mkt" role="tablist" aria-label="Markets"><button type="button" role="tab" data-set="yards">QB passing yards</button><button type="button" role="tab" data-set="scores">Score</button></div>
+    <div class="mkt-tabs" id="mkt" role="tablist" aria-label="Markets"><button type="button" role="tab" data-set="yards">QB passing yards</button><button type="button" role="tab" data-set="scores">Score</button>
+      <span class="side" id="side" role="group" aria-label="Chances and prices for the yes or the no side"><button type="button" data-side="yes" title="Chance the line is reached; Kalshi's yes price">Yes</button><button type="button" data-side="no" title="Chance it isn't; Kalshi's no price (1 − the yes bid)">No</button></span></div>
     <div class="qbs" id="qbs" role="tabpanel"></div>
     <section class="panel" id="lines" role="tabpanel" hidden>
         <div class="parts" id="parts" role="group" aria-label="Part of the game"></div>
       <div class="now-part" id="part-now"></div>
-      <table class="lines"><thead><tr><th>Market</th><th class="r">Chance</th><th class="r" title="Kalshi yes price (ask), before fees">Kalshi</th><th></th></tr></thead>
+      <table class="lines"><thead><tr><th>Market</th><th class="r">Chance</th><th class="r" id="lines-price" title="Kalshi yes price (ask), before fees">Kalshi</th><th></th></tr></thead>
         <tbody id="lines-rows"></tbody></table>
       <div class="muted" style="font-size:12px;margin-top:4px"><span class="range-key"></span>likely range of the chance ·
-      <span class="mark-key"></span>Kalshi ask: bar past the mark = the model rates it above the price.
+      <span class="mark-key"></span>Kalshi price for the side shown: bar past the mark = the model rates it above the price.
         Long lists start with the 5 lines nearest a coin flip. Quarters don't count overtime; the 2nd half and the game do.</div>
     </section>
   </section>
@@ -238,7 +244,28 @@ details.play[hidden] { display: none; }
 
 
   let shownEvent = null;
-  function render(d) { draw(d); cue("#head h1", "#head .now", "#head .wp-lbl", "#head .box tbody tr", "#next tr", "#drive tr", "#mix", "#qbs h3", "#qbs .sub", "#qbs .theta", "#qbs tbody tr", "#lines-rows tr", "#part-now"); }
+  const CUES = ["#head h1", "#head .now", "#head .wp-lbl", "#head .box tbody tr", "#next tr", "#drive tr", "#mix", "#qbs h3", "#qbs .sub", "#qbs .theta", "#qbs tbody tr", "#lines-rows tr", "#part-now"];
+  function render(d) { draw(d); cue(...CUES); }
+
+  // which side the chances and prices are for: yes (the line is reached) or no (it isn't); no = 1 − yes, bought at 1 − the yes bid
+  let side = store.get("live:side") === "no" ? "no" : "yes";
+  const isNo = () => side === "no";
+  const sp = (p) => p == null ? null : isNo() ? 1 - p : p;  // a yes chance, as the side shown
+  const buyAt = (k) => !k ? null : isNo() ? (k.bid == null ? null : 1 - k.bid) : k.ask;
+  const sellAt = (k) => !k ? null : isNo() ? (k.ask == null ? null : 1 - k.ask) : k.bid;
+  const span = (lo, hi) => lo == null ? [null, null] : isNo() ? [1 - hi, 1 - lo] : [lo, hi];
+  const yardLabel = (line) => isNo() ? `under ${line}` : `${line}+`;
+  function showSide() {
+    document.querySelectorAll("#side button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.side === side)));
+    $("lines-price").title = `Kalshi ${side} price (what buying ${side} costs), before fees`;
+  }
+  $("side").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-side]");
+    if (!b || b.dataset.side === side) return;
+    side = b.dataset.side; store.set("live:side", side); showSide();
+    if (last) { draw(last); seen.clear(); cue(...CUES); }  // the same numbers seen from the other side: nothing flashes
+  });
+  showSide();
 
   function draw(d) {
     if (d.event !== shownEvent) { seen.clear(); shownEvent = d.event; }  // another game: nothing to compare
@@ -249,11 +276,11 @@ details.play[hidden] { display: none; }
     $("markets").hidden = false;
     $("mkt").hidden = post;  // over: the recap, not markets
     if (post) { $("qbs").hidden = false; $("lines").hidden = true; } else showSet();
-    const side = (t, sc) => `<span${!pre && !post && d.ball && d.ball.team === t ? ` class="has" title="${esc(t)} has the ball"` : ""}><span class="abbr">${esc(t)}</span>${pre ? "" : `<span>${sc}</span>`}</span>`;
+    const team = (t, sc) => `<span${!pre && !post && d.ball && d.ball.team === t ? ` class="has" title="${esc(t)} has the ball"` : ""}><span class="abbr">${esc(t)}</span>${pre ? "" : `<span>${sc}</span>`}</span>`;
     const holder = (b) => b ? `${b.team} ${b.kick ? "receives" : "ball"}` : "";
     const age = d.feedTime ? Math.round((Date.now() - Date.parse(d.feedTime)) / 1000 - ((status && status.skew) || 0)) : null;
     const spread = d.line.spread == null ? "" : `line ${d.home} ${d.line.spread > 0 ? "−" + d.line.spread : "+" + Math.abs(d.line.spread)} · total ${d.line.total}`;
-    $("head").innerHTML = `<div class="board"><h1>${side(d.away, d.score.away)}${side(d.home, d.score.home)}</h1>
+    $("head").innerHTML = `<div class="board"><h1>${team(d.away, d.score.away)}${team(d.home, d.score.home)}</h1>
         <span class="meta">${esc(when(d))}</span><span class="meta">${esc(spread)}</span></div>
       ${post || pre ? "" : `<div class="now">${d.ball ? `<span class="pill">${esc(d.ball.team)} ${d.ball.kick ? "receives" : "ball"}</span> ${esc(d.ball.kick ? "Kickoff next" : d.ball.situation)}` : esc(d.now)}</div>
       ${d.lastPlay ? `<div class="muted">Last play: ${esc(d.lastPlay)}${age != null ? ` · ${ago(age)} ago` : ""}</div>` : ""}`}
@@ -316,9 +343,9 @@ details.play[hidden] { display: none; }
     const L = i >= 0 ? q.lines[i] : null;
     const left = `~${n} dropback${n === 1 ? "" : "s"}${pre ? "" : " left"} (80% range ${Math.round(db.p10)}–${Math.round(db.p90)}${db.none >= 0.005 ? `; none in ${pct(db.none)}` : ""})` +
       (L && !pre ? ` · ${Math.round(L.line - q.yds)} yds to ${L.line}+` : "");
-    const move = (p) => { const m = Math.round((p - L.p) * 100); return m === 0 ? "±0" : m > 0 ? `+${m}` : `−${-m}`; };
-    const next = L && th.next && !pre ? `<div class="theta">${L.line}+ is ${pct(L.p)} now; after the next snap: ` + th.next.map((x) =>
-      `<span class="badge" title="${esc(`${x.outcome} (${pct(x.prob)} of next snaps): ` + q.lines.map((l, j) => `${l.line}+ ${pct(x.p[j])}`).join(", "))}">${esc(x.outcome)} ${pct(x.p[i])} <span class="num">(${move(x.p[i])})</span></span>`).join("") +
+    const move = (p) => { const m = Math.round((sp(p) - sp(L.p)) * 100); return m === 0 ? "±0" : m > 0 ? `+${m}` : `−${-m}`; };
+    const next = L && th.next && !pre ? `<div class="theta">${yardLabel(L.line)} is ${pct(sp(L.p))} now; after the next snap: ` + th.next.map((x) =>
+      `<span class="badge" title="${esc(`${x.outcome} (${pct(x.prob)} of next snaps): ` + q.lines.map((l, j) => `${yardLabel(l.line)} ${pct(sp(x.p[j]))}`).join(", "))}">${esc(x.outcome)} ${pct(sp(x.p[i]))} <span class="num">(${move(x.p[i])})</span></span>`).join("") +
       `</div>` : "";
     return `<div class="theta muted">${left}</div>${next}`;
   }
@@ -334,19 +361,19 @@ details.play[hidden] { display: none; }
     const price = (l) => {
       const k = m && m.lines[l.line];
       if (!k) return "";
-      const tip = `Kalshi ${l.line}+: buy yes ${cents(k.ask)} · sell ${cents(k.bid)} · last ${cents(k.last)}`;
-      return `<a href="${esc(m.url)}" target="_blank" rel="noopener" title="${esc(tip)}">${cents(k.ask)}</a>${watchButton(
-        { t: k.ticker, ev: d.event, type: "yards", team: q.team, qb: q.qb, line: l.line })}`;
+      const tip = `Kalshi ${yardLabel(l.line)}: buy ${side} ${cents(buyAt(k))} · sell ${side} ${cents(sellAt(k))} · last yes ${cents(k.last)}`;
+      return `<a href="${esc(m.url)}" target="_blank" rel="noopener" title="${esc(tip)}">${cents(buyAt(k))}</a>${watchButton(
+        { t: k.ticker, ev: d.event, type: "yards", team: q.team, qb: q.qb, line: l.line, side })}`;
     };
-    const spread = (l) => l.lo == null ? "" : `${l.line}+: ${pct(l.p)}, likely range ${pct(l.lo)}–${pct(l.hi)}`;
-    const dots = (l) => rangeLine(l.lo, l.hi);
+    const spread = (l) => { const [lo, hi] = span(l.lo, l.hi); return lo == null ? "" : `${yardLabel(l.line)}: ${pct(sp(l.p))}, likely range ${pct(lo)}–${pct(hi)}`; };
+    const dots = (l) => rangeLine(...span(l.lo, l.hi));
     const tick = (l) => {
-      const k = m && m.lines[l.line];
-      return k && k.ask != null ? `<b class="ask" style="left:${(k.ask * 100).toFixed(1)}%" title="Kalshi ask ${cents(k.ask)} · model ${pct(l.p)}"></b>` : "";
+      const k = m && m.lines[l.line], b = buyAt(k);
+      return b != null ? `<b class="ask" style="left:${(b * 100).toFixed(1)}%" title="Kalshi ${side} ${cents(b)} · model ${pct(sp(l.p))}"></b>` : "";
     };
-    return `<table><thead><tr><th>Line</th><th class="r">Chance</th>${m ? `<th class="r" title="Kalshi yes price (ask), before fees">Kalshi</th>` : ""}<th></th></tr></thead><tbody>
-        ${lines.map((l) => `<tr data-key="${esc(q.team)}-${l.line}"><td class="num">${l.line}+</td><td class="r num">${pct(l.p)}</td>${m ? `<td class="r num">${price(l)}</td>` : ""}<td style="width:${m ? 45 : 55}%"><div class="bar" title="${esc(spread(l))}"><i style="width:${(l.p * 100).toFixed(1)}%"></i>${dots(l)}${tick(l)}</div></td></tr>`).join("")}
-        </tbody></table><div class="muted" style="font-size:12px;margin-top:4px"><span class="range-key"></span>likely range of the chance${m ? ` · <span class="mark-key"></span>Kalshi ask: bar past the mark = the model rates it above the price` : ""}</div>`;
+    return `<table><thead><tr><th>Line</th><th class="r">Chance</th>${m ? `<th class="r" title="Kalshi ${side} price (what buying ${side} costs), before fees">Kalshi</th>` : ""}<th></th></tr></thead><tbody>
+        ${lines.map((l) => `<tr data-key="${esc(q.team)}-${l.line}"><td class="num">${yardLabel(l.line)}</td><td class="r num">${pct(sp(l.p))}</td>${m ? `<td class="r num">${price(l)}</td>` : ""}<td style="width:${m ? 45 : 55}%"><div class="bar" title="${esc(spread(l))}"><i style="width:${(sp(l.p) * 100).toFixed(1)}%"></i>${dots(l)}${tick(l)}</div></td></tr>`).join("")}
+        </tbody></table><div class="muted" style="font-size:12px;margin-top:4px"><span class="range-key"></span>likely range of the chance${m ? ` · <span class="mark-key"></span>Kalshi ${side} price: bar past the mark = the model rates it above the price` : ""}</div>`;
   }
 
   // Kalshi's score markets (game, halves, quarters) beside the model's chance, from its simulated points (d.scores)
@@ -393,13 +420,14 @@ details.play[hidden] { display: none; }
     $("parts").innerHTML = parts.map((k) => `<button type="button" data-part="${k}" aria-pressed="${k === part}">${PARTS[k]}</button>`).join("");
     $("part-now").innerHTML = partNow(d, part);
     const row = ({ m, p, r }) => {
-      const tip = `Kalshi ${marketLabel(m)}: buy yes ${cents(m.ask)} · sell ${cents(m.bid)} · last ${cents(m.last)}`;
-      const range = r ? `${marketLabel(m)}: ${pct(p)}, likely range ${pct(r[0])}–${pct(r[1])}` : "";
-      return `<tr data-key="${esc(`${m.part}-${m.kind}-${m.team}-${m.x}`)}"><td>${esc(marketLabel(m))}</td><td class="r num">${pct(p)}</td>
-        <td class="r num"><a href="${esc(m.url)}" target="_blank" rel="noopener" title="${esc(tip)}">${cents(m.ask)}</a>${watchButton(
-          { t: m.ticker, ev: d.event, type: "score", part: m.part, kind: m.kind, team: m.team, x: m.x, label: marketLabel(m) })}</td>
-        <td style="width:45%"><div class="bar" title="${esc(range)}"><i style="width:${(p * 100).toFixed(1)}%"></i>${r ? rangeLine(r[0], r[1]) : ""}${m.ask == null ? "" :
-          `<b class="ask" style="left:${(m.ask * 100).toFixed(1)}%" title="Kalshi ask ${cents(m.ask)} · model ${pct(p)}"></b>`}</div></td></tr>`;
+      const label = (isNo() ? "No: " : "") + marketLabel(m), b = buyAt(m), [lo, hi] = r ? span(r[0], r[1]) : [null, null];
+      const tip = `Kalshi ${label}: buy ${side} ${cents(b)} · sell ${side} ${cents(sellAt(m))} · last yes ${cents(m.last)}`;
+      const range = lo != null ? `${label}: ${pct(sp(p))}, likely range ${pct(lo)}–${pct(hi)}` : "";
+      return `<tr data-key="${esc(`${m.part}-${m.kind}-${m.team}-${m.x}`)}"><td>${esc(label)}</td><td class="r num">${pct(sp(p))}</td>
+        <td class="r num"><a href="${esc(m.url)}" target="_blank" rel="noopener" title="${esc(tip)}">${cents(b)}</a>${watchButton(
+          { t: m.ticker, ev: d.event, type: "score", part: m.part, kind: m.kind, team: m.team, x: m.x, label: marketLabel(m), side })}</td>
+        <td style="width:45%"><div class="bar" title="${esc(range)}"><i style="width:${(sp(p) * 100).toFixed(1)}%"></i>${rangeLine(lo, hi)}${b == null ? "" :
+          `<b class="ask" style="left:${(b * 100).toFixed(1)}%" title="Kalshi ${side} ${cents(b)} · model ${pct(sp(p))}"></b>`}</div></td></tr>`;
     };
     // one group per kind of market; long ladders start with only the lines still in doubt
     $("lines-rows").innerHTML = GROUPS.map(([kind, title]) => {

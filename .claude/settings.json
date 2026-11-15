@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s localhost:8765/*)",
+      "Bash(curl -s https://api.elections.kalshi.com/*)",
+      "Bash(curl -s https://site.api.espn.com/*)",
+      "Bash(node --check *)",
+      "Bash(launchctl print *)"
+    ]
+  }
+}
